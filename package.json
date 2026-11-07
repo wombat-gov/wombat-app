@@ -5,7 +5,10 @@
   "private": true,
   "type": "module",
   "description": "macOS desktop shell for the WOMBATpass dashboard",
-  "author": "WOMBAT",
+  "author": {
+    "name": "WOMBAT",
+    "email": "page@wombat-gov.dev"
+  },
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
@@ -17,7 +20,7 @@
     "sbom": "node scripts/make-sbom.mjs",
     "assets": "npm run icon && npm run icon:win && npm run dmg:background && npm run tray:icons && npm run sbom",
     "test:smoke": "node tests/smoke.mjs",
-    "package:mac": "npm run dashboard:build && npm run sbom && electron-builder --mac",
+    "package:mac": "npm run dashboard:build && npm run sbom && electron-builder --mac --x64 --arm64 --publish never",
     "test:palette": "node tests/palette-search.mjs",
     "test:device": "node tests/device-auth.mjs",
     "check:i18n": "node scripts/check-i18n.mjs",
@@ -36,8 +39,8 @@
     "test:visual": "node tests/visual.mjs",
     "test:settings": "node tests/settings-state.mjs",
     "icon:win": "node scripts/make-win-icon.mjs",
-    "package:win": "npm run dashboard:build && npm run sbom && electron-builder --win",
-    "package:linux": "npm run dashboard:build && npm run sbom && electron-builder --linux"
+    "package:win": "npm run dashboard:build && npm run sbom && electron-builder --win --publish never",
+    "package:linux": "npm run dashboard:build && npm run sbom && electron-builder --linux --publish never"
   },
   "devDependencies": {
     "@electron/notarize": "^3.1.0",

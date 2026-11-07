@@ -24,12 +24,24 @@ if (!(await fs.stat(path.join(dashboardDir, 'package.json')).catch(() => null)))
 
 console.log(`[build-dashboard] building ${dashboardDir} -> ${outDir}`)
 
+const npmCli = process.env.npm_execpath
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-const child = spawn(npm, ['run', 'build', '--', '--outDir', outDir, '--emptyOutDir'], {
-  cwd: dashboardDir,
-  stdio: 'inherit',
-  env: { ...process.env, VITE_API_URL: '' },
-})
+const child = spawn(
+  npmCli ? process.execPath : npm,
+  [
+    ...(npmCli ? [npmCli] : []),
+    'run', 'build', '--', '--outDir', outDir, '--emptyOutDir',
+  ],
+  {
+    cwd: dashboardDir,
+    stdio: 'inherit',
+    // Node 20+ refuses to spawn .cmd files directly (EINVAL). When npm's
+    // entry point is known use Node directly; otherwise fall back to the
+    // Windows shell.
+    shell: !npmCli && process.platform === 'win32',
+    env: { ...process.env, VITE_API_URL: '' },
+  },
+)
 
 const exitCode = await new Promise((resolve) => {
   child.on('exit', code => resolve(code ?? 1))

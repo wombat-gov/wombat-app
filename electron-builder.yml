@@ -81,6 +81,7 @@ nsis:
 linux:
   icon: build/icon.png
   category: Development
+  maintainer: WOMBAT <page@wombat-gov.dev>
   target:
     - AppImage
     - deb
