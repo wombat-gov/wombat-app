@@ -1,0 +1,163 @@
+name: Build desktop app
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  WOMBAT_DASHBOARD_REPOSITORY: wombat-gov/wombat-dashboard
+  WOMBAT_DASHBOARD_REF: ${{ vars.WOMBAT_DASHBOARD_REF || 'main' }}
+
+jobs:
+  checks:
+    name: Static checks and unit tests
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Check out dashboard
+        shell: bash
+        run: |
+          git clone --depth 1 --branch "$WOMBAT_DASHBOARD_REF" \
+            "https://github.com/${WOMBAT_DASHBOARD_REPOSITORY}.git" ../wafpass-dashboard
+
+      - name: Install electron app dependencies
+        run: npm ci
+
+      - name: Install dashboard dependencies
+        working-directory: ../wafpass-dashboard
+        run: npm ci
+
+      - name: Build dashboard bundle
+        run: npm run dashboard:build
+
+      - name: Generate SBOM
+        run: npm run sbom
+
+      - name: Validate SBOM
+        shell: bash
+        run: |
+          node -e "
+            const fs = require('fs');
+            const overview = JSON.parse(fs.readFileSync('src/sbom.json', 'utf8'));
+            const cdx = JSON.parse(fs.readFileSync('build/sbom.cdx.json', 'utf8'));
+            if (!Array.isArray(overview.components) || overview.components.length === 0) {
+              throw new Error('SBOM overview has no components');
+            }
+            if (cdx.bomFormat !== 'CycloneDX' || !Array.isArray(cdx.components) || cdx.components.length === 0) {
+              throw new Error('CycloneDX SBOM is invalid or empty');
+            }
+            console.log('SBOM valid:', cdx.components.length, 'components');
+          "
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: wombatpass-sbom
+          path: |
+            src/sbom.json
+            build/sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: i18n key parity
+        run: npm run check:i18n
+
+      - name: Scan store unit tests
+        run: npm run test:scan-state
+
+      - name: Syntax check shell modules
+        shell: bash
+        run: |
+          for file in src/*.js src/*.cjs; do
+            node --check "$file"
+          done
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: checks
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-14
+            package_script: package:mac
+            artifact: wombatpass-macos
+          - name: Windows
+            os: windows-2022
+            package_script: package:win
+            artifact: wombatpass-windows
+          - name: Linux
+            os: ubuntu-22.04
+            package_script: package:linux
+            artifact: wombatpass-linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install Linux packaging tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fakeroot rpm
+
+      - name: Check out dashboard
+        shell: bash
+        run: |
+          git clone --depth 1 --branch "$WOMBAT_DASHBOARD_REF" \
+            "https://github.com/${WOMBAT_DASHBOARD_REPOSITORY}.git" ../wafpass-dashboard
+
+      - name: Install electron app dependencies
+        run: npm ci
+
+      - name: Install dashboard dependencies
+        working-directory: ../wafpass-dashboard
+        run: npm ci
+
+      - name: Build and package
+        run: npm run ${{ matrix.package_script }}
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+            release/*.AppImage
+            release/*.deb
+            release/*.blockmap
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}-sbom
+          path: |
+            src/sbom.json
+            build/sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 90
