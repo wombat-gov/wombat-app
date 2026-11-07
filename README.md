@@ -442,18 +442,42 @@ Each command rebuilds the dashboard bundle and SBOM, then runs electron-builder
 for that platform. Expected artifacts:
 
 ```
-release/WOMBATpass Dashboard-1.0.0-arm64.dmg
-release/WOMBATpass Dashboard-1.0.0-arm64.zip
-release/WOMBATpass Dashboard-1.0.0-x64.dmg
-release/WOMBATpass Dashboard-1.0.0-x64.zip
-release/WOMBATpass Dashboard-1.0.0-x64.exe
-release/WOMBATpass Dashboard-1.0.0-x64.zip
-release/WOMBATpass Dashboard-1.0.0-x86_64.AppImage
-release/WOMBATpass Dashboard-1.0.0-amd64.deb
+release/WOMBATpass Dashboard-1.0.0-mac-arm64.dmg
+release/WOMBATpass Dashboard-1.0.0-mac-arm64.zip
+release/WOMBATpass Dashboard-1.0.0-mac-x64.dmg
+release/WOMBATpass Dashboard-1.0.0-mac-x64.zip
+release/WOMBATpass Dashboard-1.0.0-win-x64.exe
+release/WOMBATpass Dashboard-1.0.0-win-x64.zip
+release/WOMBATpass Dashboard-1.0.0-linux-x86_64.AppImage
+release/WOMBATpass Dashboard-1.0.0-linux-amd64.deb
 ```
 
 GitHub Actions runs the static checks on Ubuntu and builds all three platforms
 with `.github/workflows/desktop.yml`, uploading the installers as artifacts.
+
+### Publishing a release
+
+A GitHub Release is created automatically when a `v*` tag is pushed and all
+three platform builds succeed. The tag must match the `version` in
+`package.json`:
+
+```bash
+npm version 1.0.0 --no-git-tag-version
+git add package.json package-lock.json
+git commit -m "Release 1.0.0"
+git tag v1.0.0
+git push origin main --tags
+```
+
+The release contains every platform artifact plus:
+
+- `WOMBATpass-Dashboard-<version>-sbom.json` — component/license overview
+- `WOMBATpass-Dashboard-<version>-sbom.cdx.json` — CycloneDX SBOM
+- `SHA256SUMS.txt` — checksums for all uploaded files
+
+You can also run the workflow manually and enter a `release_tag`; leave it empty
+for a build-only run. The dashboard checkout uses the repository variable
+`WOMBAT_DASHBOARD_REF` (default `main`).
 
 Icons and installer assets are generated locally with `npm run assets` and
 committed under `build/` and `src/assets/`. Windows uses `build/icon.ico`,

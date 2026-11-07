@@ -16,6 +16,7 @@ adheres to [Semantic Versioning](https://semver.org/) and
 - Offline/error recovery, diagnostics bundles, checksum-verified update downloads.
 - Cross-platform tab strip, onboarding/What's New, local crash reports and support bundles.
 - GitHub Actions builds for macOS (DMG/ZIP), Windows (NSIS/ZIP) and Linux (AppImage/DEB).
+- Tag-driven GitHub Releases with all platform installers, CycloneDX/JSON SBOMs and SHA-256 checksums.
 
 ### Security
 
