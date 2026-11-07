@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Help &amp; About</title>
+  <style>
+    :root {
+      --bg: #0b0f14; --surface: #141a22; --surface-2: #1a222c; --border: #26313d;
+      --text: #e6edf5; --muted: #93a3b5; --accent: #4f8cff;
+      --ok: #3fb950; --warn: #d29922; --err: #f85149;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font: 12px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased; user-select: none;
+      display: flex; flex-direction: column;
+    }
+    header {
+      display: flex; align-items: center; gap: 10px; padding: 14px 18px 0;
+    }
+    .brand { font-size: 15px; font-weight: 700; }
+    .brand span { color: var(--accent); }
+    .version { color: var(--muted); font: 10px ui-monospace, Menlo, monospace; border: 1px solid var(--border); padding: 2px 6px; border-radius: 5px; }
+    .spacer { flex: 1; }
+    button {
+      padding: 6px 10px; border-radius: 7px; border: 1px solid var(--border);
+      background: var(--surface-2); color: var(--text); font: inherit; font-size: 11px;
+      font-weight: 600; cursor: pointer;
+    }
+    button:hover { border-color: #3a4756; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.ghost { background: transparent; color: var(--muted); }
+    .tabs { display: flex; gap: 4px; padding: 12px 18px 0; border-bottom: 1px solid var(--border); }
+    .tab {
+      padding: 7px 12px; border: 0; border-bottom: 2px solid transparent; background: none;
+      color: var(--muted); font: inherit; font-weight: 600; cursor: pointer;
+    }
+    .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+    main { flex: 1; overflow-y: auto; padding: 16px 18px 20px; }
+    .panel { display: none; flex-direction: column; gap: 12px; }
+    .panel.active { display: flex; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+    h2 { margin: 0 0 8px; font-size: 11px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; color: var(--muted); }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+    .row { display: flex; gap: 12px; padding: 3px 0; }
+    .row .k { color: var(--muted); width: 120px; flex: none; }
+    .row .v { word-break: break-all; user-select: text; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; }
+    .pill { padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; border: 1px solid var(--border); color: var(--muted); }
+    .pill.ok { color: var(--ok); border-color: rgba(63,185,80,.4); background: rgba(63,185,80,.1); }
+    .pill.err { color: var(--err); border-color: rgba(248,81,73,.4); background: rgba(248,81,73,.1); }
+    .links { display: flex; gap: 14px; flex-wrap: wrap; }
+    .links a { color: var(--accent); cursor: pointer; font-weight: 600; }
+    .links a:hover { text-decoration: underline; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,.06); font-size: 11px; }
+    th { color: var(--muted); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+    td.mono, td .mono { font-family: ui-monospace, Menlo, monospace; }
+    td.license, th.license { width: 18%; }
+    td.scope, th.scope { width: 14%; color: var(--muted); }
+    .filter {
+      width: 100%; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--surface-2); color: var(--text); font: inherit; font-size: 11px; outline: none;
+    }
+    .filter:focus { border-color: var(--accent); }
+    .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .summary .card { padding: 10px 12px; }
+    .summary .n { font-size: 20px; font-weight: 800; line-height: 1.1; }
+    .summary .l { color: var(--muted); font-size: 9px; letter-spacing: .05em; text-transform: uppercase; }
+    .note { color: var(--muted); font-size: 11px; }
+    kbd { font: 10px ui-monospace, Menlo, monospace; border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; background: var(--surface-2); }
+    .sbom-scroll { max-height: 330px; overflow-y: auto; }
+    footer { display: flex; gap: 8px; padding: 10px 18px 14px; border-top: 1px solid var(--border); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">WOMBAT<span>pass</span> Help</div>
+    <span class="version" id="version"></span>
+    <span class="spacer"></span>
+    <input class="help-search" id="help-search" type="search" placeholder="Filter help…" data-i18n-placeholder="help.search" />
+    <button class="ghost" id="close" data-i18n="help.close">Close</button>
+  </header>
+
+  <nav class="tabs" id="tabs" role="tablist" aria-label="Help sections">
+    <button class="tab active" data-tab="about" data-i18n="help.tab.about">About</button>
+    <button class="tab" data-tab="shortcuts" data-i18n="help.tab.shortcuts">Shortcuts</button>
+    <button class="tab" data-tab="sbom" data-i18n="help.tab.sbom">SBOM</button>
+    <button class="tab" data-tab="diagnostics" data-i18n="help.tab.diagnostics">Diagnostics</button>
+  </nav>
+
+  <main>
+    <section class="panel active" data-panel="about">
+      <div class="card">
+        <h2 data-i18n="help.application">Application</h2>
+        <div class="grid">
+          <div class="row"><span class="k">Version</span><span class="v" id="app-version">—</span></div>
+          <div class="row"><span class="k">Electron</span><span class="v mono" id="electron-version">—</span></div>
+          <div class="row"><span class="k">Chromium</span><span class="v mono" id="chrome-version">—</span></div>
+          <div class="row"><span class="k">Node</span><span class="v mono" id="node-version">—</span></div>
+          <div class="row"><span class="k">V8</span><span class="v mono" id="v8-version">—</span></div>
+          <div class="row"><span class="k">Platform</span><span class="v mono" id="platform">—</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 data-i18n="help.environment">Environment</h2>
+        <div class="row"><span class="k">Name</span><span class="v" id="env-name">—</span></div>
+        <div class="row"><span class="k">Server URL</span><span class="v mono" id="server-url">—</span></div>
+        <div class="row"><span class="k">Health</span><span class="v"><span class="pill" id="health">checking…</span> <button id="health-check">Check</button></span></div>
+      </div>
+
+      <div class="card">
+        <h2 data-i18n="help.links">Documentation &amp; links</h2>
+        <div class="links">
+          <a data-url="https://www.wombat-gov.dev/docs/wafpp/1.1.0/">Documentation</a>
+          <a data-url="https://www.wombat-gov.dev/">WOMBAT website</a>
+          <a data-url="https://github.com/WAF2p/framework">Framework on GitHub</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 data-i18n="help.whatsNew">What's new</h2>
+        <div id="whats-new-list" class="note"></div>
+      </div>
+      <div class="card">
+        <h2 data-i18n="help.more">More</h2>
+        <div class="actions">
+          <button id="open-about" data-i18n="help.openAbout">Open Dashboard About</button>
+          <button id="show-logs" data-i18n="help.showLogs">Show logs</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" data-panel="shortcuts">
+      <div class="card">
+        <h2 data-i18n="help.shortcuts">Keyboard shortcuts</h2>
+        <table>
+          <thead><tr><th style="width:38%" data-i18n="help.shortcut">Shortcut</th><th data-i18n="help.action">Action</th></tr></thead>
+          <tbody id="shortcuts-body"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h2 data-i18n="help.palette">Command palette</h2>
+        <div class="row"><span class="k"><kbd>↑</kbd> <kbd>↓</kbd></span><span class="v" data-i18n="help.paletteMove">Move selection</span></div>
+        <div class="row"><span class="k"><kbd>↵</kbd></span><span class="v" data-i18n="help.paletteOpen">Open the selected run/page/action</span></div>
+        <div class="row"><span class="k"><kbd>Esc</kbd></span><span class="v" data-i18n="help.paletteClear">Clear the query, then close</span></div>
+      </div>
+    </section>
+
+    <section class="panel" data-panel="sbom">
+      <div class="summary">
+        <div class="card"><div class="n" id="sbom-count">—</div><div class="l">Components</div></div>
+        <div class="card"><div class="n" id="sbom-licenses">—</div><div class="l">License types</div></div>
+        <div class="card"><div class="n" id="sbom-date">—</div><div class="l">Generated</div></div>
+      </div>
+      <div class="card">
+        <h2 data-i18n="help.licenses">Licenses</h2>
+        <div id="license-summary" class="note"></div>
+      </div>
+      <div class="card">
+        <h2 data-i18n="help.components">Components</h2>
+        <input class="filter" id="sbom-filter" placeholder="Filter by name, license or scope…" />
+        <div class="sbom-scroll" style="margin-top:8px">
+          <table>
+            <thead><tr><th data-i18n="help.name">Name</th><th data-i18n="help.version">Version</th><th class="license" data-i18n="help.license">License</th><th class="scope" data-i18n="help.scope">Scope</th></tr></thead>
+            <tbody id="sbom-body"></tbody>
+          </table>
+        </div>
+        <p class="note" id="sbom-note"></p>
+        <div class="actions" style="margin-top:8px">
+          <button id="save-sbom" class="primary" data-i18n="help.saveSbom">Save SBOM (CycloneDX)…</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" data-panel="diagnostics">
+      <div class="card">
+        <h2 data-i18n="help.paths">Paths &amp; platform</h2>
+        <div class="row"><span class="k">Config</span><span class="v mono" id="config-path">—</span></div>
+        <div class="row"><span class="k">Log file</span><span class="v mono" id="log-path">—</span></div>
+        <div class="row"><span class="k">OS</span><span class="v mono" id="os">—</span></div>
+        <div class="row"><span class="k">Architecture</span><span class="v mono" id="arch">—</span></div>
+        <div class="row"><span class="k" data-i18n="help.lastCrash">Last crash</span><span class="v mono" id="last-crash">—</span></div>
+      </div>
+      <div class="card">
+        <h2 data-i18n="help.preferences">Preferences</h2>
+        <div class="grid" id="prefs"></div>
+      </div>
+      <div class="card">
+        <h2 data-i18n="help.actions">Actions</h2>
+        <div class="actions">
+          <button id="copy-diagnostics" class="primary" data-i18n="help.copyDiagnostics">Copy diagnostics</button>
+          <button id="preview-diagnostics" data-i18n="help.previewDiagnostics">Preview diagnostics</button>
+          <button id="save-diagnostics" data-i18n="help.saveDiagnostics">Save diagnostics…</button>
+          <button id="save-support" data-i18n="help.saveSupport">Save support bundle…</button>
+          <button id="diag-logs" data-i18n="help.showLogs">Show logs</button>
+          <button id="diag-config" data-i18n="help.openConfig">Open config folder</button>
+        </div>
+        <pre class="diag-preview" id="diag-preview" hidden></pre>
+        <div class="note" id="diag-status" role="status" aria-live="polite"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span class="note" data-i18n="help.note">WOMBATpass Dashboard desktop shell</span>
+    <span class="spacer"></span>
+    <button id="footer-about" data-i18n="help.openAbout">Dashboard About</button>
+  </footer>
+
+  <script>
+    const api = window.wombatHelp
+    let i18n = {}
+    const tr = (key, fallback) => i18n[key] ?? fallback
+    const $ = (id) => document.getElementById(id)
+    let info = null
+    let modifier = 'Ctrl'
+
+    function el(tag, className, text) {
+      const node = document.createElement(tag)
+      if (className) node.className = className
+      if (text != null) node.textContent = text
+      return node
+    }
+
+    function row(k, v, mono = false) {
+      const wrap = el('div', 'row')
+      wrap.append(el('span', 'k', k), el('span', `v${mono ? ' mono' : ''}`, v))
+      return wrap
+    }
+
+    function setHealth(state) {
+      const pill = $('health')
+      if (state.ok) {
+        pill.className = 'pill ok'
+        pill.textContent = `healthy · ${state.latencyMs} ms`
+      } else {
+        pill.className = 'pill err'
+        pill.textContent = state.error ? 'unreachable' : `HTTP ${state.status}`
+      }
+    }
+
+    async function checkHealth() {
+      const pill = $('health')
+      pill.className = 'pill'
+      pill.textContent = 'checking…'
+      try {
+        setHealth(await api.health())
+      } catch (error) {
+        pill.className = 'pill err'
+        pill.textContent = 'error'
+      }
+    }
+
+    function renderShortcuts() {
+      const body = $('shortcuts-body')
+      body.replaceChildren()
+      const isMac = info?.platform?.os === 'darwin'
+      const withShift = key => (isMac ? `⌘⇧${key}` : `Ctrl+Shift+${key}`)
+      const plain = key => (isMac ? `⌘${key}` : `Ctrl+${key}`)
+      const items = [
+        [withShift('W'), tr('help.shortcut.widgets', 'Toggle the menu-bar widgets')],
+        [withShift('D'), tr('help.shortcut.dashboard', 'Open the dashboard')],
+        [withShift('S'), tr('help.shortcut.scanClipboard', 'Scan the clipboard as IaC')],
+        [withShift('K'), tr('help.shortcut.palette', 'Command palette')],
+        [withShift('O'), tr('help.shortcut.scanFolder', 'Scan an IaC folder')],
+        [plain('N'), tr('help.shortcut.newWindow', 'Open a new dashboard window/tab')],
+        [plain('P'), tr('help.shortcut.print', 'Print the current page')],
+        [plain(','), tr('help.shortcut.settings', 'Server Settings')],
+        [plain('Q'), tr('help.shortcut.quit', 'Quit the app')],
+      ]
+      for (const [key, label] of items) {
+        const tr = el('tr')
+        const kbd = el('td')
+        kbd.append(el('kbd', '', key))
+        tr.append(kbd, el('td', '', label))
+        body.append(tr)
+      }
+    }
+
+    function renderWhatsNew() {
+      const node = $('whats-new-list')
+      if (!node) return
+      const whatsNew = info?.whatsNew
+      if (!whatsNew?.items?.length) {
+        node.textContent = tr('help.noWhatsNew', 'No release notes available.')
+        return
+      }
+      node.textContent = ''
+      const title = document.createElement('div')
+      title.style.fontWeight = '700'
+      title.style.marginBottom = '6px'
+      title.textContent = tr('help.whatsNewVersion', "What's new in {version}").replace('{version}', whatsNew.version || info.app.version)
+      const list = document.createElement('ul')
+      list.style.margin = '0'
+      list.style.paddingLeft = '18px'
+      for (const item of whatsNew.items) {
+        const li = document.createElement('li')
+        li.textContent = item
+        list.append(li)
+      }
+      node.append(title, list)
+    }
+
+    function renderLicenseSummary() {
+      const node = $('license-summary')
+      if (!node) return
+      const licenses = info?.sbom?.summary?.licenses
+      if (!licenses || Object.keys(licenses).length === 0) {
+        node.textContent = tr('help.noLicenses', 'No license data generated.')
+        return
+      }
+      node.textContent = Object.entries(licenses)
+        .sort((a, b) => b[1] - a[1])
+        .map(([license, count]) => `${license}: ${count}`)
+        .join(' · ')
+    }
+
+    function renderSbom() {
+      const sbom = info?.sbom
+      if (!sbom) {
+        $('sbom-body').replaceChildren(el('tr', '', tr('help.noSbom', 'No SBOM data generated.')))
+        return
+      }
+      $('sbom-count').textContent = String(sbom.summary?.count ?? sbom.components.length)
+      $('sbom-licenses').textContent = String(Object.keys(sbom.summary?.licenses ?? {}).length)
+      const date = sbom.generatedAt ? new Date(sbom.generatedAt).toLocaleDateString() : '—'
+      $('sbom-date').textContent = date
+      $('sbom-note').textContent = sbom.summary?.note ?? ''
+
+      const render = (filter = '') => {
+        const needle = filter.trim().toLowerCase()
+        const body = $('sbom-body')
+        body.replaceChildren()
+        const rows = sbom.components.filter(component => {
+          if (!needle) return true
+          return `${component.name} ${component.version} ${component.license} ${component.scope}`.toLowerCase().includes(needle)
+        })
+        for (const component of rows) {
+          const tr = el('tr')
+          tr.append(el('td', 'mono', component.name))
+          tr.append(el('td', 'mono', component.version))
+          tr.append(el('td', 'license', component.license))
+          tr.append(el('td', 'scope', component.scope))
+          body.append(tr)
+        }
+        if (!rows.length) {
+          const tr = el('tr')
+          tr.append(el('td', '', 'No matching components.'))
+          body.append(tr)
+        }
+      }
+      render()
+      $('sbom-filter').addEventListener('input', (event) => render(event.target.value))
+    }
+
+    function renderPreferences() {
+      const prefs = info?.preferences ?? {}
+      const box = $('prefs')
+      box.replaceChildren()
+      const rows = [
+        ['Launch at login', prefs.launchAtLogin ? 'on' : 'off'],
+        ['Start in menu bar', prefs.startMinimized ? 'on' : 'off'],
+        ['Show in Dock', prefs.showInDock === false ? 'off' : 'on'],
+        ['Menu bar text', prefs.menuBarText ?? 'none'],
+        ['Notify findings', prefs.notifyFindings ? 'on' : 'off'],
+        ['Governance reminders', prefs.notifyGovernance ? 'on' : 'off'],
+      ]
+      for (const [k, v] of rows) box.append(row(k, v))
+    }
+
+    function render() {
+      const app = info.app
+      document.title = `Help & About — ${app.name}`
+      $('version').textContent = `v${app.version}`
+      $('app-version').textContent = app.version
+      $('electron-version').textContent = info.runtime.electron
+      $('chrome-version').textContent = info.runtime.chrome
+      $('node-version').textContent = info.runtime.node
+      $('v8-version').textContent = info.runtime.v8
+      modifier = info.platform.os === 'darwin' ? '⌘' : 'Ctrl+'
+      $('platform').textContent = `${info.platform.os} ${info.platform.arch}`
+      $('os').textContent = `${info.platform.os} ${info.platform.release}`
+      $('arch').textContent = info.platform.arch
+
+      $('env-name').textContent = info.environment?.name ?? '—'
+      $('server-url').textContent = info.serverUrl ?? '—'
+      $('config-path').textContent = info.configPath ?? '—'
+      $('log-path').textContent = info.logPath ?? '—'
+
+      renderShortcuts()
+      renderSbom()
+      renderWhatsNew()
+      renderLicenseSummary()
+      renderPreferences()
+      checkHealth()
+    }
+
+    function diagnosticsText() {
+      if (!info) return ''
+      return [
+        `${info.app.name} ${info.app.version}`,
+        `Electron ${info.runtime.electron} · Chromium ${info.runtime.chrome} · Node ${info.runtime.node}`,
+        `Platform ${info.platform.os} ${info.platform.arch} (${info.platform.release})`,
+        `Environment ${info.environment?.name ?? '—'} — ${info.serverUrl}`,
+        `Config ${info.configPath}`,
+        `Log ${info.logPath}`,
+      ].join('\n')
+    }
+
+    // Tabs
+    for (const button of document.querySelectorAll('.tab')) {
+      button.setAttribute('role', 'tab')
+      button.tabIndex = button.classList.contains('active') ? 0 : -1
+      button.setAttribute('aria-selected', button.classList.contains('active') ? 'true' : 'false')
+    }
+    for (const panel of document.querySelectorAll('.panel')) {
+      panel.setAttribute('role', 'tabpanel')
+      panel.tabIndex = 0
+    }
+    function selectTab(name) {
+      const tab = [...document.querySelectorAll('.tab')].find(button => button.dataset.tab === name)
+      if (!tab) return
+      for (const button of document.querySelectorAll('.tab')) {
+        const active = button === tab
+        button.classList.toggle('active', active)
+        button.tabIndex = active ? 0 : -1
+        button.setAttribute('aria-selected', active ? 'true' : 'false')
+      }
+      for (const panel of document.querySelectorAll('.panel')) {
+        const active = panel.dataset.panel === tab.dataset.tab
+        panel.classList.toggle('active', active)
+        panel.setAttribute('aria-hidden', active ? 'false' : 'true')
+      }
+    }
+
+    $('tabs').addEventListener('click', (event) => {
+      const tab = event.target.closest('.tab')
+      if (tab) selectTab(tab.dataset.tab)
+    })
+    api.onOpenTab((tab) => selectTab(tab))
+    $('help-search').addEventListener('input', () => {
+      const query = $('help-search').value.trim().toLowerCase()
+      const panel = document.querySelector('.panel.active')
+      if (!panel) return
+      for (const card of panel.querySelectorAll('.card')) {
+        card.style.display = !query || card.textContent.toLowerCase().includes(query) ? '' : 'none'
+      }
+    })
+    $('tabs').addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+      const tabs = [...document.querySelectorAll('.tab')]
+      const index = tabs.indexOf(document.activeElement)
+      if (index < 0) return
+      event.preventDefault()
+      let next = index
+      if (event.key === 'ArrowLeft') next = (index - 1 + tabs.length) % tabs.length
+      else if (event.key === 'ArrowRight') next = (index + 1) % tabs.length
+      else if (event.key === 'Home') next = 0
+      else if (event.key === 'End') next = tabs.length - 1
+      tabs[next].focus()
+      tabs[next].click()
+    })
+
+    // Actions
+    $('close').addEventListener('click', () => api.close())
+    $('footer-about').addEventListener('click', () => api.openAbout())
+    $('open-about').addEventListener('click', () => api.openAbout())
+    $('show-logs').addEventListener('click', () => api.showLogs())
+    $('diag-logs').addEventListener('click', () => api.showLogs())
+    $('diag-config').addEventListener('click', () => api.openConfig())
+    $('health-check').addEventListener('click', checkHealth)
+    $('copy-diagnostics').addEventListener('click', async () => {
+      const result = await api.copyDiagnostics()
+      $('diag-status').textContent = result?.ok ? 'Diagnostics copied to the clipboard.' : 'Copy failed.'
+    })
+    $('preview-diagnostics').addEventListener('click', async () => {
+      const result = await api.diagnostics()
+      const node = $('diag-preview')
+      if (!result?.ok) {
+        $('diag-status').textContent = 'Could not load diagnostics.'
+        return
+      }
+      node.textContent = JSON.stringify(result.diagnostics, null, 2)
+      node.hidden = false
+    })
+    $('save-support').addEventListener('click', async () => {
+      const result = await api.saveSupport()
+      $('diag-status').textContent = result?.ok ? `Saved ${result.filePath} + screenshot` : (result?.canceled ? '' : 'Save failed.')
+    })
+    $('save-diagnostics').addEventListener('click', async () => {
+      const result = await api.saveDiagnostics()
+      $('diag-status').textContent = result?.ok ? `Saved to ${result.filePath}` : (result?.canceled ? '' : 'Save failed.')
+    })
+    $('save-sbom').addEventListener('click', () => api.saveSbom())
+    for (const link of document.querySelectorAll('a[data-url]')) {
+      link.addEventListener('click', () => api.openExternal(link.dataset.url))
+    }
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') api.close()
+    })
+
+    api.get().then((data) => {
+      info = data
+      i18n = data.i18n ?? {}
+      for (const node of document.querySelectorAll('[data-i18n]')) {
+        node.textContent = tr(node.dataset.i18n, node.textContent)
+      }
+      document.title = tr('help.title', 'Help & About')
+      render()
+    }).catch((error) => {
+      document.querySelector('main').textContent = `Could not load help data: ${error.message}`
+    })
+  </script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "version": "1.0.0",
+  "items": [
+    "Undo a closed tab from its toast.",
+    "Palette results highlight matches and support pinned favorites with Cmd/Ctrl+D.",
+    "Help now includes release notes, license acknowledgements, search, a support bundle and last-crash information.",
+    "Press ? anywhere in the dashboard to open Help directly on Shortcuts.",
+    "Zoom control for dashboard windows.",
+    "Optional local crash reports (never uploaded) and richer diagnostics metrics.",
+    "The shell API and UI hardening plan are complete through U8."
+  ]
+}

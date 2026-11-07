@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WOMBATpass Stack</title>
+  <style>
+    :root {
+      --bg: #0b0f14; --surface: #141a22; --surface-2: #1a222c; --border: #26313d;
+      --text: #e6edf5; --muted: #93a3b5; --accent: #4f8cff;
+      --ok: #3fb950; --warn: #d29922; --err: #f85149;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; padding: 16px 18px; background: var(--bg); color: var(--text);
+      font: 12px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased; user-select: none;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    header { display: flex; align-items: center; gap: 8px; }
+    h1 { margin: 0; font-size: 15px; font-weight: 700; }
+    .env { color: var(--muted); font-size: 11px; }
+    .spacer { flex: 1; }
+    button {
+      padding: 5px 9px; border-radius: 7px; border: 1px solid var(--border);
+      background: var(--surface-2); color: var(--text); font: inherit; font-size: 11px;
+      font-weight: 600; cursor: pointer;
+    }
+    button:hover { border-color: #3a4756; }
+    button:disabled { opacity: .5; cursor: default; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.danger { color: var(--err); border-color: rgba(248,81,73,.4); }
+    button.icon { width: 28px; height: 26px; padding: 0; font-size: 14px; }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .container-row { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.05); display: flex; flex-direction: column; gap: 7px; }
+    .container-row:last-child { border-bottom: 0; }
+    .line1 { display: flex; align-items: center; gap: 8px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+    .dot.running { background: var(--ok); box-shadow: 0 0 6px rgba(63,185,80,.5); }
+    .dot.exited, .dot.dead { background: var(--err); }
+    .dot.restarting { background: var(--warn); }
+    .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .status { color: var(--muted); font-size: 10px; margin-left: auto; white-space: nowrap; }
+    .line2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .meter { display: flex; flex-direction: column; gap: 3px; }
+    .meter .label { display: flex; justify-content: space-between; color: var(--muted); font-size: 9px; letter-spacing: .05em; text-transform: uppercase; }
+    .bar { height: 4px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
+    .bar > span { display: block; height: 100%; background: var(--accent); border-radius: 2px; transition: width .4s ease; }
+    .bar.warn > span { background: var(--warn); }
+    .bar.err > span { background: var(--err); }
+    .line3 { display: flex; gap: 6px; }
+    .line3 button { flex: none; }
+    .muted { color: var(--muted); }
+    .empty { padding: 18px 12px; color: var(--muted); text-align: center; }
+    footer { display: flex; gap: 8px; margin-top: auto; padding-top: 4px; }
+    footer .spacer { flex: 1; }
+    .notice { color: var(--muted); font-size: 11px; min-height: 16px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Stack</h1>
+    <span class="env" id="env"></span>
+    <span class="spacer"></span>
+    <button class="icon" id="refresh" title="Refresh">⟳</button>
+  </header>
+
+  <div class="notice" id="notice"></div>
+  <div class="card" id="containers"></div>
+
+  <footer>
+    <button id="start" hidden>Start Stack</button>
+    <button id="dashboard">Open Dashboard</button>
+    <span class="spacer"></span>
+    <button id="close">Close</button>
+  </footer>
+
+  <script>
+    const api = window.stackApi
+    const list = document.getElementById('containers')
+    const notice = document.getElementById('notice')
+    const rows = new Map()
+    let lastData = null
+
+    const clamp = value => Math.max(0, Math.min(100, Number(value) || 0))
+    const tone = value => value >= 90 ? 'err' : value >= 70 ? 'warn' : ''
+
+    function el(tag, className, text) {
+      const node = document.createElement(tag)
+      if (className) node.className = className
+      if (text != null) node.textContent = text
+      return node
+    }
+
+    function ensureRow(container) {
+      let refs = rows.get(container.name)
+      if (refs) return refs
+
+      const row = el('div', 'container-row')
+      const line1 = el('div', 'line1')
+      const dot = el('span', 'dot')
+      const name = el('span', 'name', container.name)
+      const status = el('span', 'status')
+      line1.append(dot, name, status)
+
+      const line2 = el('div', 'line2')
+      const cpuMeter = el('div', 'meter')
+      const cpuLabel = el('div', 'label')
+      const cpuValue = el('span', '', 'CPU')
+      const cpuPct = el('span', '', '—')
+      cpuLabel.append(cpuValue, cpuPct)
+      const cpuBar = el('div', 'bar')
+      const cpuFill = el('span')
+      cpuBar.append(cpuFill)
+      cpuMeter.append(cpuLabel, cpuBar)
+
+      const memMeter = el('div', 'meter')
+      const memLabel = el('div', 'label')
+      const memTitle = el('span', '', 'Memory')
+      const memPct = el('span', '', '—')
+      memLabel.append(memTitle, memPct)
+      const memBar = el('div', 'bar')
+      const memFill = el('span')
+      memBar.append(memFill)
+      memMeter.append(memLabel, memBar)
+      line2.append(cpuMeter, memMeter)
+
+      const line3 = el('div', 'line3')
+      const restart = el('button', '', 'Restart')
+      const toggle = el('button', '', 'Stop')
+      const logs = el('button', '', 'Logs')
+      restart.addEventListener('click', () => act(container.name, 'restart'))
+      toggle.addEventListener('click', () => act(container.name, container.state === 'running' ? 'stop' : 'start'))
+      logs.addEventListener('click', () => api.logs(container.name))
+      line3.append(restart, toggle, logs)
+
+      row.append(line1, line2, line3)
+      list.append(row)
+
+      refs = { row, dot, status, cpuFill, cpuPct, memFill, memPct, toggle }
+      rows.set(container.name, refs)
+      return refs
+    }
+
+    async function act(name, action) {
+      notice.textContent = `${action} ${name}…`
+      const result = await api.action(name, action)
+      if (!result.ok && !result.cancelled) notice.textContent = result.error || 'Action failed'
+      else notice.textContent = ''
+      refresh()
+    }
+
+    function render(data) {
+      lastData = data
+      document.getElementById('env').textContent = data.environment || ''
+      document.getElementById('start').hidden = !data.canStartStack
+
+      if (!data.available) {
+        list.replaceChildren(el('div', 'empty', `Docker CLI unavailable: ${data.error || 'not found'}`))
+        rows.clear()
+        return
+      }
+      if (!data.containers.length) {
+        list.replaceChildren(el('div', 'empty', 'No WOMBAT containers found.'))
+        rows.clear()
+        return
+      }
+
+      if (list.querySelector('.empty')) list.replaceChildren()
+
+      const seen = new Set()
+      for (const container of data.containers) {
+        seen.add(container.name)
+        const refs = ensureRow(container)
+        refs.dot.className = `dot ${container.state || ''}`.trim()
+        refs.status.textContent = container.status || container.state || ''
+        refs.toggle.textContent = container.state === 'running' ? 'Stop' : 'Start'
+
+        const stats = data.stats?.[container.name]
+        const cpu = stats ? clamp(stats.cpu) : null
+        const mem = stats ? clamp(stats.memPct) : null
+        refs.cpuFill.style.width = `${cpu ?? 0}%`
+        refs.cpuFill.parentElement.className = `bar ${tone(cpu ?? 0)}`.trim()
+        refs.cpuPct.textContent = stats ? `${stats.cpu.toFixed(1)}%` : '—'
+        refs.memFill.style.width = `${mem ?? 0}%`
+        refs.memFill.parentElement.className = `bar ${tone(mem ?? 0)}`.trim()
+        refs.memPct.textContent = stats ? (stats.mem || `${stats.memPct.toFixed(0)}%`) : '—'
+      }
+
+      for (const [name, refs] of rows) {
+        if (!seen.has(name)) {
+          refs.row.remove()
+          rows.delete(name)
+        }
+      }
+    }
+
+    async function refresh() {
+      try {
+        render(await api.get())
+      } catch (error) {
+        notice.textContent = error.message
+      }
+    }
+
+    document.getElementById('refresh').addEventListener('click', refresh)
+    document.getElementById('dashboard').addEventListener('click', () => api.openDashboard())
+    document.getElementById('close').addEventListener('click', () => api.close())
+    document.getElementById('start').addEventListener('click', async () => {
+      const button = document.getElementById('start')
+      button.disabled = true
+      notice.textContent = 'Starting stack…'
+      const result = await api.start()
+      notice.textContent = result.message || (result.ok ? 'Started' : 'Failed')
+      button.disabled = false
+      refresh()
+    })
+
+    api.onUpdate(render)
+    refresh()
+  </script>
+</body>
+</html>

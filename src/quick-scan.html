@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Clipboard scan</title>
+  <style>
+    :root {
+      --bg: #0b0f14; --surface: #141a22; --surface-2: #1a222c; --border: #26313d;
+      --text: #e6edf5; --muted: #93a3b5; --accent: #4f8cff;
+      --ok: #3fb950; --warn: #d29922; --err: #f85149;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; padding: 18px 20px; background: var(--bg); color: var(--text);
+      font: 12px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased; user-select: none;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    header { display: flex; align-items: baseline; gap: 8px; }
+    h1 { margin: 0; font-size: 15px; font-weight: 700; flex: 1; }
+    .kbd { color: var(--muted); font: 10px ui-monospace, Menlo, monospace; border: 1px solid var(--border); padding: 2px 6px; border-radius: 5px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+    .muted { color: var(--muted); }
+    .center { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 10px; padding: 26px 10px; }
+    .spinner { width: 22px; height: 22px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .score-row { display: flex; align-items: baseline; gap: 6px; }
+    .score { font-size: 40px; font-weight: 800; line-height: 1; }
+    .score.ok { color: var(--ok); } .score.warn { color: var(--warn); } .score.err { color: var(--err); }
+    .denom { color: var(--muted); font-size: 13px; }
+    .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
+    .metric { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 7px; }
+    .metric .n { font-size: 16px; font-weight: 700; }
+    .metric .l { color: var(--muted); font-size: 9px; letter-spacing: .05em; text-transform: uppercase; }
+    .findings { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
+    .finding { display: flex; align-items: center; gap: 7px; font-size: 11px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+    .finding .id { font: 10px ui-monospace, Menlo, monospace; color: var(--muted); flex: none; }
+    .finding .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chip { font-size: 9px; font-weight: 700; padding: 2px 5px; border-radius: 4px; text-transform: uppercase; }
+    .chip.critical { color: var(--err); background: rgba(248,81,73,.12); }
+    .chip.high { color: var(--warn); background: rgba(210,153,34,.14); }
+    .chip.medium, .chip.low { color: var(--muted); background: rgba(147,163,181,.12); }
+    .row { display: flex; gap: 8px; margin-top: auto; padding-top: 10px; }
+    button {
+      padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--surface-2); color: var(--text); font: inherit; font-weight: 600; cursor: pointer;
+    }
+    button:hover { border-color: #3a4756; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.ghost { background: transparent; color: var(--muted); margin-left: auto; }
+    .error { color: var(--err); }
+    code { font-family: ui-monospace, Menlo, monospace; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Clipboard scan</h1>
+    <span class="kbd" id="shortcut">Ctrl/Cmd+Shift+S</span>
+  </header>
+  <div class="card" id="content"></div>
+  <div class="row">
+    <button id="scan" class="primary">Scan Clipboard</button>
+    <button id="copy" hidden>Copy summary</button>
+    <button id="open" hidden>Open in Dashboard</button>
+    <button id="close" class="ghost">Close</button>
+  </div>
+
+  <script>
+    const api = window.quickScan
+    const content = document.getElementById('content')
+    const copyBtn = document.getElementById('copy')
+    const openBtn = document.getElementById('open')
+    let state = { status: 'idle' }
+
+    const tone = score => score >= 80 ? 'ok' : score >= 50 ? 'warn' : 'err'
+
+    function el(tag, className, text) {
+      const node = document.createElement(tag)
+      if (className) node.className = className
+      if (text != null) node.textContent = text
+      return node
+    }
+
+    function message(text, kind = '') {
+      const box = el('div', `center ${kind}`.trim())
+      box.append(el('div', kind === 'error' ? 'error' : '', text))
+      return box
+    }
+
+    function render(next) {
+      state = next
+      content.replaceChildren()
+      copyBtn.hidden = true
+      openBtn.hidden = true
+      document.getElementById('scan').hidden = state.status === 'scanning'
+
+      if (state.status === 'idle') {
+        content.append(message('Copy Terraform or CloudFormation to the clipboard, then press Ctrl/Cmd+Shift+S.'))
+        return
+      }
+
+      if (state.status === 'scanning') {
+        const box = el('div', 'center')
+        box.append(el('div', 'spinner'))
+        box.append(el('div', '', `Scanning ${state.iac} from the clipboard…`))
+        box.append(el('div', 'muted', `${state.chars} characters`))
+        content.append(box)
+        return
+      }
+
+      if (state.status === 'auth') {
+        content.append(message('Sign in to the dashboard first, then scan the clipboard again.', 'error'))
+        openBtn.hidden = false
+        return
+      }
+
+      if (state.status === 'error') {
+        content.append(message(state.message || 'Scan failed.', 'error'))
+        return
+      }
+
+      if (state.status === 'done' && state.result) {
+        const result = state.result
+        const scoreRow = el('div', 'score-row')
+        scoreRow.append(el('span', `score ${tone(result.score)}`, String(result.score)))
+        scoreRow.append(el('span', 'denom', '/100'))
+        content.append(scoreRow)
+
+        const metrics = el('div', 'metrics')
+        for (const [value, label] of [
+          [result.total_pass, 'Pass'],
+          [result.total_fail, 'Fail'],
+          [result.total_skip, 'Skip'],
+        ]) {
+          const box = el('div', 'metric')
+          box.append(el('div', 'n', String(value)), el('div', 'l', label))
+          metrics.append(box)
+        }
+        content.append(metrics)
+
+        const failing = (result.results || []).filter(item => String(item.status).toUpperCase() === 'FAIL')
+        if (failing.length > 0) {
+          const list = el('div', 'findings')
+          for (const item of failing.slice(0, 20)) {
+            const row = el('div', 'finding')
+            row.append(el('span', 'id', item.control_id))
+            row.append(el('span', 'title', item.control_title || ''))
+            row.append(el('span', `chip ${String(item.severity || '').toLowerCase()}`, String(item.severity || '')))
+            list.append(row)
+          }
+          content.append(list)
+        } else {
+          content.append(message('No failing controls. Nice.'))
+        }
+
+        copyBtn.hidden = false
+        openBtn.hidden = false
+        return
+      }
+
+      content.append(message('Copy IaC to the clipboard and scan again.'))
+    }
+
+    copyBtn.addEventListener('click', async () => {
+      await api.copy()
+      copyBtn.textContent = 'Copied ✓'
+      setTimeout(() => { copyBtn.textContent = 'Copy summary' }, 1200)
+    })
+    document.getElementById('scan').addEventListener('click', () => api.scan())
+    openBtn.addEventListener('click', () => api.openDashboard())
+    document.getElementById('close').addEventListener('click', () => api.close())
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') api.close()
+    })
+
+    api.onState(render)
+    api.get().then(render)
+  </script>
+</body>
+</html>

@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; script-src 'unsafe-inline'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WOMBAT Widgets</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --surface: #141a22;
+      --surface-2: #1a222c;
+      --border: #26313d;
+      --text: #e6edf5;
+      --muted: #93a3b5;
+      --accent: #4f8cff;
+      --ok: #3fb950;
+      --warn: #d29922;
+      --err: #f85149;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      padding: 14px 14px 12px;
+      background: var(--bg);
+      color: var(--text);
+      font: 12px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+      overflow: hidden;
+    }
+    header.top { display: flex; align-items: center; gap: 8px; padding: 2px 2px 12px; }
+    .mark { width: 22px; height: 22px; display: none; }
+    .mark.set { display: block; }
+    .brand { font-size: 14px; font-weight: 700; letter-spacing: .01em; }
+    .brand span { color: var(--accent); }
+    .spacer { flex: 1; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; flex: none; }
+    .dot.sm { width: 6px; height: 6px; }
+    .dot.ok { background: var(--ok); box-shadow: 0 0 6px rgba(63,185,80,.55); }
+    .dot.warn { background: var(--warn); }
+    .dot.err { background: var(--err); box-shadow: 0 0 6px rgba(248,81,73,.5); }
+    .unread {
+      min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+      border: 1px solid rgba(79,140,255,.5); background: rgba(79,140,255,.16);
+      color: #9bbcff; font: 700 10px/16px -apple-system, sans-serif;
+      cursor: pointer;
+    }
+    .unread:hover { background: rgba(79,140,255,.28); }
+    .icon-btn {
+      width: 26px; height: 26px; border-radius: 7px;
+      border: 1px solid transparent; background: transparent;
+      color: var(--muted); font-size: 15px; line-height: 1; cursor: pointer;
+    }
+    .icon-btn:hover { background: var(--surface-2); color: var(--text); border-color: var(--border); }
+    .icon-btn.spin { animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    main { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; flex: 1; }
+    main::-webkit-scrollbar { width: 0; }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 11px 12px 12px; }
+    .card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+    .card-head h2 {
+      margin: 0; font-size: 10px; font-weight: 700; letter-spacing: .13em;
+      text-transform: uppercase; color: var(--muted); flex: 1;
+    }
+    .pill {
+      padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700;
+      letter-spacing: .04em; text-transform: uppercase;
+      background: var(--surface-2); color: var(--muted); border: 1px solid var(--border);
+    }
+    .pill.ok { color: var(--ok); background: rgba(63,185,80,.1); border-color: rgba(63,185,80,.35); }
+    .pill.err { color: var(--err); background: rgba(248,81,73,.1); border-color: rgba(248,81,73,.35); }
+    .muted { color: var(--muted); }
+    .small { font-size: 11px; }
+
+    .kv { display: flex; flex-direction: column; gap: 4px; }
+    .kv > div { display: flex; align-items: baseline; gap: 10px; }
+    .kv span { color: var(--muted); flex: none; width: 62px; font-size: 11px; }
+    .kv b {
+      font-weight: 500; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .subhead {
+      margin: 10px 0 5px; font-size: 9px; font-weight: 700; letter-spacing: .13em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .containers { display: flex; flex-direction: column; gap: 3px; }
+    .container { display: flex; align-items: center; gap: 7px; min-width: 0; }
+    .container b { font-weight: 500; font-size: 11px; white-space: nowrap; }
+    .container .status { color: var(--muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: auto; }
+    .actions { margin-top: 6px; display: flex; gap: 12px; }
+    .drag-handle { color: var(--muted); cursor: grab; font-size: 13px; line-height: 1; padding: 0 2px; }
+    .drag-handle:active { cursor: grabbing; }
+
+    .project-select {
+      width: 100%; margin-bottom: 8px; padding: 5px 8px; border-radius: 7px;
+      border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+      font: inherit; font-size: 11px; outline: none;
+    }
+    .project-select:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(79,140,255,.2); }
+    .scan-project { font-size: 14px; font-weight: 700; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .scan-meta { color: var(--muted); font-size: 10px; margin-bottom: 8px; }
+    .score-row { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
+    .score { font-size: 34px; font-weight: 800; line-height: 1; }
+    .score.ok { color: var(--ok); }
+    .score.warn { color: var(--warn); }
+    .score.err { color: var(--err); }
+    .score-denom { color: var(--muted); font-size: 12px; }
+    .spark { margin-left: auto; color: var(--muted); }
+    .spark.ok { color: var(--ok); }
+    .spark.warn { color: var(--warn); }
+    .spark.err { color: var(--err); }
+    .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0 6px; }
+    .metric { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 7px; }
+    .metric .n { font-size: 15px; font-weight: 700; line-height: 1.15; }
+    .metric .l { color: var(--muted); font-size: 9px; letter-spacing: .05em; text-transform: uppercase; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .chip { font-size: 9px; font-weight: 700; letter-spacing: .05em; padding: 2px 6px; border-radius: 5px; text-transform: uppercase; }
+    .chip.crit { color: var(--err); background: rgba(248,81,73,.12); }
+    .chip.high { color: var(--warn); background: rgba(210,153,34,.14); }
+    .chip.stale { color: var(--warn); background: rgba(210,153,34,.12); }
+    .chip.stale.err { color: var(--err); background: rgba(248,81,73,.12); }
+    .links { display: flex; gap: 12px; margin-top: 9px; flex-wrap: wrap; }
+    .link-btn {
+      background: none; border: 0; padding: 0; color: var(--accent);
+      font: inherit; font-weight: 600; cursor: pointer;
+    }
+    .link-btn:hover { text-decoration: underline; }
+    .empty { color: var(--muted); font-size: 11px; padding: 6px 0; }
+    .empty.err { color: var(--err); }
+
+    footer { display: flex; gap: 6px; padding-top: 10px; }
+    footer button {
+      padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--surface-2); color: var(--text); font: inherit; font-weight: 600;
+      font-size: 11px; cursor: pointer;
+    }
+    footer button:hover { border-color: #3a4756; }
+    footer button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    footer button.ghost { background: transparent; color: var(--muted); margin-left: auto; }
+    button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <img class="mark" id="brand-mark" alt="" />
+    <div class="brand">WOMBAT<span>pass</span></div>
+    <span class="spacer"></span>
+    <button class="unread" id="unread" hidden title="Notifications"></button>
+    <span class="dot" id="health-dot" title="Service status"></span>
+    <button class="icon-btn" id="refresh" title="Refresh">⟳</button>
+  </header>
+
+  <main>
+    <section class="card">
+      <div class="card-head">
+        <h2 data-i18n="widgets.service">Service</h2>
+        <span class="pill" id="service-pill">…</span>
+      </div>
+      <div class="kv">
+        <div><span data-i18n="widgets.environment">Environment</span><b id="service-env">—</b></div>
+        <div><span data-i18n="widgets.account">Account</span><b id="service-account">—</b></div>
+        <div><span data-i18n="widgets.endpoint">Endpoint</span><b id="service-url">—</b></div>
+        <div><span data-i18n="widgets.latency">Latency</span><b id="service-latency">—</b></div>
+        <div><span data-i18n="widgets.checked">Checked</span><b id="service-checked">—</b></div>
+      </div>
+      <div class="subhead" data-i18n="widgets.containers">Containers</div>
+      <div class="containers" id="containers"></div>
+      <div class="actions" id="service-actions"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2 data-i18n="widgets.latestScan">Latest scan</h2>
+        <span class="muted small" id="scan-age"></span>
+      </div>
+      <select class="project-select" id="project-select" hidden></select>
+      <div id="scan-body"></div>
+    </section>
+  </main>
+
+  <footer>
+    <button class="primary" id="open" data-i18n="widgets.openDashboard">Open Dashboard</button>
+    <button id="settings" data-i18n="widgets.settings">Settings…</button>
+    <button class="ghost" id="quit" data-i18n="widgets.quit">Quit</button>
+  </footer>
+
+  <script>
+    const api = window.wombatWidgets
+    const $ = (id) => document.getElementById(id)
+    let I18N = {}
+
+    const tr = (key, fallback) => I18N[key] ?? fallback
+
+    function applyI18n() {
+      for (const el of document.querySelectorAll('[data-i18n]')) {
+        el.textContent = tr(el.dataset.i18n, el.textContent)
+      }
+    }
+
+    function rel(iso) {
+      if (!iso) return '—'
+      const diff = Date.now() - new Date(iso).getTime()
+      if (!Number.isFinite(diff)) return '—'
+      const s = Math.max(0, Math.round(diff / 1000))
+      if (s < 45) return `${s}s`
+      const m = Math.round(s / 60)
+      if (m < 60) return `${m}m`
+      const h = Math.round(m / 60)
+      if (h < 24) return `${h}h`
+      return `${Math.round(h / 24)}d`
+    }
+
+    function tone(score) {
+      if (score == null) return ''
+      if (score >= 80) return 'ok'
+      if (score >= 50) return 'warn'
+      return 'err'
+    }
+
+    function empty(text, cls = '') {
+      const div = document.createElement('div')
+      div.className = `empty ${cls}`.trim()
+      div.textContent = text
+      return div
+    }
+
+    function linkButton(label, onClick) {
+      const btn = document.createElement('button')
+      btn.className = 'link-btn'
+      btn.textContent = label
+      btn.addEventListener('click', onClick)
+      return btn
+    }
+
+    function sparkline(values) {
+      const nums = (values ?? []).filter(value => typeof value === 'number')
+      if (nums.length < 2) return null
+
+      const width = 84
+      const height = 22
+      const min = Math.min(...nums)
+      const max = Math.max(...nums)
+      const span = max - min || 1
+      const step = width / (nums.length - 1)
+      const points = nums
+        .map((value, index) => `${(index * step).toFixed(1)},${(height - 2 - ((value - min) / span) * (height - 4)).toFixed(1)}`)
+        .join(' ')
+
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+      svg.setAttribute('viewBox', `0 0 ${width} ${height}`)
+      svg.setAttribute('width', String(width))
+      svg.setAttribute('height', String(height))
+      svg.setAttribute('aria-hidden', 'true')
+      svg.className = `spark ${tone(nums[nums.length - 1])}`.trim()
+
+      const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline')
+      polyline.setAttribute('points', points)
+      polyline.setAttribute('fill', 'none')
+      polyline.setAttribute('stroke', 'currentColor')
+      polyline.setAttribute('stroke-width', '1.6')
+      polyline.setAttribute('stroke-linecap', 'round')
+      polyline.setAttribute('stroke-linejoin', 'round')
+      svg.append(polyline)
+      return svg
+    }
+
+    function renderService(service) {
+      const ok = service.health.ok
+      $('health-dot').className = `dot ${ok ? 'ok' : 'err'}`
+      const pill = $('service-pill')
+      pill.textContent = ok ? tr('widgets.healthy', 'Healthy') : (service.health.status || tr('widgets.unreachable', 'Unreachable'))
+      pill.className = `pill ${ok ? 'ok' : 'err'}`
+      pill.title = service.health.error || ''
+
+      const environment = $('service-env')
+      environment.textContent = `${service.environment || '—'}${service.environmentKind === 'production' ? ' · PROD' : ''}`
+      environment.title = environment.textContent
+
+      const account = $('service-account')
+      account.textContent = service.auth?.signedIn
+        ? (service.auth.user?.displayName || service.auth.user?.username || '—')
+        : tr('widgets.notSignedIn', 'Not signed in')
+      account.title = service.auth?.method === 'device'
+        ? tr('appbar.deviceSession', 'Device token')
+        : tr('appbar.browserSession', 'Browser session')
+
+      const url = $('service-url')
+      url.textContent = service.url
+      url.title = service.url
+      $('service-latency').textContent =
+        service.health.latencyMs != null ? `${service.health.latencyMs} ms` : '—'
+      $('service-checked').textContent = `${rel(service.checkedAt)}`
+
+      const list = $('containers')
+      list.replaceChildren()
+      if (!service.docker.available) {
+        list.append(empty(tr('widgets.dockerMissing', 'Docker CLI not available')))
+      } else if (!service.docker.containers.length) {
+        list.append(empty(tr('widgets.noContainers', 'No WOMBAT containers running')))
+      } else {
+        for (const container of service.docker.containers) {
+          const row = document.createElement('div')
+          row.className = 'container'
+
+          const dot = document.createElement('span')
+          dot.className = `dot sm ${container.state ?? (container.healthy ? 'ok' : container.up ? 'warn' : 'err')}`
+
+          const name = document.createElement('b')
+          name.textContent = container.name
+
+          const status = document.createElement('span')
+          status.className = 'status'
+          status.textContent = container.status.replace(/\s*\(healthy\)/i, '')
+          status.title = container.status
+
+          row.append(dot, name, status)
+          list.append(row)
+        }
+      }
+
+      const actions = $('service-actions')
+      actions.replaceChildren()
+      actions.append(linkButton('Stack', () => api.openStack()))
+      if (!ok && service.canStartStack) {
+        const start = linkButton(tr('widgets.startStack', 'Start Docker Stack'), async () => {
+          start.textContent = tr('widgets.starting', 'Starting…')
+          start.disabled = true
+          const result = await api.startStack()
+          start.textContent = result.message ?? (result.ok ? 'Started' : 'Failed')
+          setTimeout(() => api.get().then(render).catch(() => {}), 4_000)
+        })
+        actions.append(start)
+      }
+    }
+
+    function metric(value, label) {
+      const box = document.createElement('div')
+      box.className = 'metric'
+      const n = document.createElement('div')
+      n.className = 'n'
+      n.textContent = value
+      const l = document.createElement('div')
+      l.className = 'l'
+      l.textContent = label
+      box.append(n, l)
+      return box
+    }
+
+    function renderProjectSelect(scan) {
+      const select = $('project-select')
+      const projects = Array.isArray(scan.projects) ? scan.projects : []
+      if (!projects.length) {
+        select.hidden = true
+        return
+      }
+
+      select.hidden = false
+      select.replaceChildren()
+
+      const all = document.createElement('option')
+      all.value = ''
+      all.textContent = tr('widgets.projectAll', 'All projects')
+      select.append(all)
+
+      for (const project of projects) {
+        const option = document.createElement('option')
+        option.value = project
+        option.textContent = project
+        select.append(option)
+      }
+      select.value = scan.selectedProject ?? ''
+    }
+
+    function renderScan(scan) {
+      const body = $('scan-body')
+      body.replaceChildren()
+      $('scan-age').textContent = ''
+      renderProjectSelect(scan)
+
+      if (scan.signedIn === false) {
+        body.append(empty(tr('widgets.signIn', 'Sign in to the dashboard to see scan data.')))
+        body.append(linkButton(tr('widgets.openDashboard', 'Open Dashboard'), () => api.openDashboard()))
+        return
+      }
+      if (!scan.run) {
+        body.append(empty(scan.error ? `Could not load scans: ${scan.error}` : tr('widgets.noScans', 'No scans yet.'), scan.error ? 'err' : ''))
+        return
+      }
+
+      const run = scan.run
+      $('scan-age').textContent = `${rel(run.createdAt)}`
+
+      const project = document.createElement('div')
+      project.className = 'scan-project'
+      project.textContent = run.project
+      project.title = run.project
+      body.append(project)
+
+      const meta = document.createElement('div')
+      meta.className = 'scan-meta'
+      meta.textContent = [run.iacFramework, run.stage].filter(Boolean).join(' · ') || 'scan'
+      body.append(meta)
+
+      const scoreRow = document.createElement('div')
+      scoreRow.className = 'score-row'
+      const score = document.createElement('div')
+      score.className = `score ${tone(run.score)}`
+      score.textContent = run.score != null ? String(run.score) : '—'
+      const denom = document.createElement('div')
+      denom.className = 'score-denom'
+      denom.textContent = '/100'
+      scoreRow.append(score, denom)
+
+      const spark = sparkline(scan.trend)
+      if (spark) scoreRow.append(spark)
+      body.append(scoreRow)
+
+      const metrics = document.createElement('div')
+      metrics.className = 'metrics'
+      metrics.append(
+        metric(String(run.failedControls), tr('widgets.failedControls', 'Failed controls')),
+        metric(run.passRate != null ? `${run.passRate}%` : '—', tr('widgets.passRate', 'Pass rate')),
+        metric(`${run.controlsRun}/${run.controlsLoaded}`, tr('widgets.controlsRun', 'Controls run')),
+      )
+      body.append(metrics)
+
+      const chips = document.createElement('div')
+      chips.className = 'chips'
+      if (run.critical > 0) {
+        const chip = document.createElement('span')
+        chip.className = 'chip crit'
+        chip.textContent = `${run.critical} critical`
+        chips.append(chip)
+      }
+      if (run.high > 0) {
+        const chip = document.createElement('span')
+        chip.className = 'chip high'
+        chip.textContent = `${run.high} high`
+        chips.append(chip)
+      }
+
+      const ageMs = Date.now() - new Date(run.createdAt).getTime()
+      if (Number.isFinite(ageMs) && ageMs > 24 * 60 * 60 * 1000) {
+        const stale = document.createElement('span')
+        stale.className = `chip stale${ageMs > 7 * 24 * 60 * 60 * 1000 ? ' err' : ''}`
+        stale.textContent = tr('widgets.stale', 'stale')
+        chips.append(stale)
+      }
+      if (chips.childElementCount > 0) body.append(chips)
+
+      const links = document.createElement('div')
+      links.className = 'links'
+      links.append(linkButton(tr('widgets.openRun', 'Open run →'), () => api.openDashboard(run.id)))
+      links.append(linkButton(tr('widgets.findings', 'Findings'), () => api.openFindings(run.id)))
+      links.append(linkButton('New tab', () => api.openTab(run.id)))
+      const copy = linkButton(tr('widgets.copyLink', 'Copy link'), async () => {
+        const result = await api.copyLink(run.id)
+        if (result?.ok) {
+          copy.textContent = '✓'
+          setTimeout(() => { copy.textContent = tr('widgets.copyLink', 'Copy link') }, 1_200)
+        }
+      })
+      links.append(copy)
+
+      const drag = document.createElement('span')
+      drag.className = 'drag-handle'
+      drag.textContent = '⠿'
+      drag.title = 'Drag run link'
+      drag.draggable = true
+      drag.addEventListener('dragstart', (event) => {
+        event.preventDefault()
+        api.startDrag(run.id)
+      })
+      links.append(drag)
+      body.append(links)
+    }
+
+    function renderNotifications(notifications) {
+      const badge = $('unread')
+      const unread = notifications?.unread ?? 0
+      badge.hidden = unread <= 0
+      badge.textContent = unread > 99 ? '99+' : String(unread)
+      badge.title = tr('widgets.notifications', 'Notifications')
+    }
+
+    function render(data) {
+      I18N = data.i18n ?? {}
+      applyI18n()
+
+      if (data.brandIcon) {
+        const mark = $('brand-mark')
+        mark.src = data.brandIcon
+        mark.classList.add('set')
+      }
+
+      renderService(data.service)
+      renderScan(data.scan)
+      renderNotifications(data.notifications)
+    }
+
+    function fail(message) {
+      $('service-pill').textContent = 'Error'
+      $('service-pill').className = 'pill err'
+      $('health-dot').className = 'dot err'
+      $('containers').replaceChildren(empty(message, 'err'))
+    }
+
+    async function refresh() {
+      const button = $('refresh')
+      button.classList.add('spin')
+      try {
+        render(await api.get())
+      } catch (error) {
+        fail(error.message)
+      } finally {
+        setTimeout(() => button.classList.remove('spin'), 350)
+      }
+    }
+
+    $('refresh').addEventListener('click', refresh)
+    $('unread').addEventListener('click', () => api.openNotifications())
+    $('open').addEventListener('click', () => api.openDashboard())
+    $('settings').addEventListener('click', () => api.openSettings())
+    $('quit').addEventListener('click', () => api.quit())
+    $('project-select').addEventListener('change', async (event) => {
+      await api.setProject(event.target.value)
+      setTimeout(refresh, 400)
+    })
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        api.hide()
+        return
+      }
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+      if (document.activeElement?.tagName === 'SELECT') return
+
+      event.preventDefault()
+      const focusables = [...document.querySelectorAll('button:not([hidden]), select:not([hidden]), input')]
+        .filter(el => !el.disabled && el.offsetParent !== null)
+      if (focusables.length === 0) return
+
+      const index = focusables.indexOf(document.activeElement)
+      const direction = event.key === 'ArrowDown' ? 1 : -1
+      const next = focusables[(index + direction + focusables.length) % focusables.length]
+      next?.focus()
+    })
+
+    api.onUpdate(render)
+    api.get().then(render).catch((error) => fail(error.message))
+  </script>
+</body>
+</html>

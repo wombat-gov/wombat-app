@@ -1,0 +1,1285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Server Settings</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --surface: #141a22;
+      --surface-2: #1b232d;
+      --border: #2a3442;
+      --text: #e6edf5;
+      --muted: #93a3b5;
+      --accent: #4f8cff;
+      --ok: #3fb950;
+      --error: #f85149;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .window-head { padding: 20px 24px 0; flex: none; }
+    .tabs {
+      display: flex; gap: 2px; padding: 12px 24px 0; flex: none;
+      border-bottom: 1px solid var(--border); overflow-x: auto;
+    }
+    .tab {
+      padding: 8px 10px; border: 0; border-bottom: 2px solid transparent;
+      border-radius: 0; background: none; color: var(--muted);
+      font: inherit; font-weight: 600; white-space: nowrap; cursor: pointer;
+    }
+    .tab:hover { color: var(--text); background: none; }
+    .tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+    .content { flex: 1; overflow-y: auto; padding: 4px 24px 20px; }
+    .panel[hidden] { display: none; }
+    .footer {
+      flex: none; display: flex; align-items: center; gap: 8px;
+      padding: 12px 24px; border-top: 1px solid var(--border); background: var(--bg);
+    }
+    .footer .spacer { flex: 1; }
+    .devices-wrap {
+      margin-top: 10px; border: 1px solid var(--border); border-radius: 8px;
+      overflow: hidden;
+    }
+    table.devices { width: 100%; border-collapse: collapse; font-size: 11px; }
+    table.devices th, table.devices td {
+      text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    table.devices th {
+      color: var(--muted); font-size: 9px; font-weight: 700;
+      letter-spacing: .1em; text-transform: uppercase; background: var(--surface);
+    }
+    table.devices tr:last-child td { border-bottom: 0; }
+    table.devices td.actions { text-align: right; white-space: nowrap; }
+    .tag {
+      font-size: 9px; font-weight: 700; border-radius: 999px;
+      border: 1px solid var(--border); padding: 1px 6px; color: var(--muted);
+      white-space: nowrap;
+    }
+    .tag.current { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+    .tag.revoked { color: var(--error); border-color: rgba(248,81,73,.45); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    #test-all-results { white-space: pre-line; }
+    .update-notes {
+      max-height: 140px; overflow: auto; margin: 8px 0 0; padding: 8px 10px;
+      border-radius: 8px; border: 1px solid var(--border); background: var(--surface);
+      color: var(--muted); font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+      white-space: pre-wrap; user-select: text;
+    }
+
+    h1 { margin: 0 0 3px; font-size: 16px; font-weight: 600; letter-spacing: .01em; }
+    .subtitle { margin: 0 0 14px; color: var(--muted); }
+    label { display: block; margin: 10px 0 5px; font-weight: 500; }
+    input[type="url"], input[type="text"], select {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text);
+      font: 13px ui-monospace, SFMono-Regular, Menlo, monospace;
+      outline: none;
+    }
+    select { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79, 140, 255, .18); }
+    .hint { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
+    .hint code { color: var(--text); }
+    .row-inline { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+    .row-inline select { flex: 1; }
+    .status {
+      min-height: 32px;
+      margin: 10px 0 0;
+      padding: 7px 10px;
+      border-radius: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .status.ok { color: var(--ok); border-color: rgba(63, 185, 80, .35); }
+    .status.error { color: var(--error); border-color: rgba(248, 81, 73, .35); }
+
+    .section-title {
+      margin: 16px 0 2px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .pref { display: flex; align-items: flex-start; gap: 9px; padding: 5px 0; cursor: pointer; }
+    .pref input { margin: 3px 0 0; accent-color: var(--accent); }
+    .pref .label { font-weight: 500; line-height: 1.35; }
+    .pref .desc { color: var(--muted); font-size: 11px; line-height: 1.35; }
+    .field-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+    .field-row label { margin: 0; flex: 1; }
+    .field-row select { width: 200px; }
+
+    .detected { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); }
+    .detected-title { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
+    .candidate {
+      display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+      padding: 5px 6px; margin: 2px 0; border-radius: 6px; border: 1px solid transparent;
+      background: none; color: var(--text); font: inherit; font-size: 11px; cursor: pointer;
+    }
+    .candidate:hover { background: var(--surface-2); border-color: var(--border); }
+    .candidate .url { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .candidate .source { margin-left: auto; color: var(--muted); font-size: 10px; }
+
+    .row { display: flex; gap: 8px; margin-top: 16px; }
+    button {
+      padding: 8px 13px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text);
+      font: inherit;
+      cursor: pointer;
+    }
+    button:hover { border-color: #3a4756; }
+    button:disabled { opacity: .55; cursor: default; }
+    button.primary { margin-left: auto; background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    button.primary:hover { background: #6a9dff; }
+    button.small { padding: 6px 9px; font-size: 11px; }
+    .link {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 11px;
+      word-break: break-all;
+      user-select: text;
+    }
+    .link button { padding: 0 2px; border: 0; background: none; color: var(--accent); font-size: 11px; }
+    .link .sep { margin: 0 6px; opacity: .5; }
+  </style>
+</head>
+  <div class="window-head">
+    <h1 data-i18n="settings.title">Server Settings</h1>
+    <p class="subtitle" data-i18n="settings.subtitle">Where is wombat-server running?</p>
+  </div>
+
+  <nav class="tabs" role="tablist" aria-label="Settings sections">
+    <button class="tab" role="tab" id="tab-connection" aria-controls="panel-connection" aria-selected="true" tabindex="0" data-tab="connection" data-i18n="settings.tab.connection">Connection</button>
+    <button class="tab" role="tab" id="tab-signin" aria-controls="panel-signin" aria-selected="false" tabindex="-1" data-tab="signin" data-i18n="settings.tab.signin">Sign-in &amp; devices</button>
+    <button class="tab" role="tab" id="tab-appearance" aria-controls="panel-appearance" aria-selected="false" tabindex="-1" data-tab="appearance" data-i18n="settings.tab.appearance">Appearance</button>
+    <button class="tab" role="tab" id="tab-scans" aria-controls="panel-scans" aria-selected="false" tabindex="-1" data-tab="scans" data-i18n="settings.tab.scans">Scans</button>
+    <button class="tab" role="tab" id="tab-advanced" aria-controls="panel-advanced" aria-selected="false" tabindex="-1" data-tab="advanced" data-i18n="settings.tab.advanced">Advanced</button>
+  </nav>
+
+  <div class="content">
+    <section class="panel" id="panel-connection" role="tabpanel" aria-labelledby="tab-connection" data-panel="connection">
+      <div class="section-title" data-i18n="settings.environment">Environment</div>
+      <div class="row-inline">
+        <select id="env-select" data-i18n-aria-label="settings.environment" aria-label="Environment"></select>
+        <button id="env-new" class="small" data-i18n="settings.newEnvironment">New</button>
+        <button id="env-delete" class="small" data-i18n="settings.deleteEnvironment">Delete</button>
+      </div>
+
+      <label for="env-name" data-i18n="settings.environmentName">Name</label>
+      <input id="env-name" type="text" spellcheck="false" autocomplete="off" />
+
+      <label for="env-kind" data-i18n="settings.environmentType">Environment type</label>
+      <select id="env-kind">
+        <option value="local" data-i18n="settings.kind.local">Local</option>
+        <option value="staging" data-i18n="settings.kind.staging">Staging</option>
+        <option value="production" data-i18n="settings.kind.production">Production</option>
+      </select>
+
+      <label for="server-url" data-i18n="settings.urlLabel">wombat-server URL</label>
+      <input id="server-url" type="url" spellcheck="false" autocomplete="off" placeholder="http://127.0.0.1:8000" />
+      <p class="hint"><span data-i18n="settings.defaultHint">Docker Compose default:</span> <code id="default-url">http://127.0.0.1:8000</code></p>
+
+      <div class="row-inline">
+        <button id="detect" data-i18n="settings.detect">Detect</button>
+        <button id="test" data-i18n="settings.test">Test connection</button>
+        <button id="test-all" class="small" data-i18n="settings.testAll">Test all environments</button>
+      </div>
+      <div class="hint" id="test-all-results" role="status" aria-live="polite"></div>
+      <div class="detected" id="detected" hidden>
+        <div class="detected-title" data-i18n="settings.detected">Detected servers</div>
+        <div id="detected-list"></div>
+      </div>
+      <div id="status" class="status" role="status" aria-live="polite" data-i18n="settings.notTested">Not tested yet.</div>
+    </section>
+
+    <section class="panel" id="panel-signin" role="tabpanel" aria-labelledby="tab-signin" data-panel="signin" hidden>
+      <div class="section-title" data-i18n="settings.deviceAuth">Desktop sign-in</div>
+      <p class="hint" data-i18n="settings.deviceAuthHint">Sign in through your browser (SSO included) to store a revocable device token for this environment. The app then works without dashboard cookies.</p>
+      <div class="row-inline">
+        <button id="device-signin" data-i18n="settings.deviceSignIn">Sign in with browser</button>
+        <button id="device-signout" class="small" data-i18n="settings.deviceSignOut" disabled>Sign out</button>
+        <button id="device-open" class="small" data-i18n="settings.deviceOpen" hidden>Approval page</button>
+      </div>
+      <div id="device-status" class="status" role="status" aria-live="polite" data-i18n="settings.deviceNotSignedIn">Not signed in — using the dashboard browser session.</div>
+
+      <div class="section-title" data-i18n="settings.devices">Authorized devices</div>
+      <p class="hint" data-i18n="settings.devicesHint">Revoke a device to invalidate its token immediately.</p>
+      <div class="row-inline">
+        <button id="devices-refresh" class="small" data-i18n="settings.devicesRefresh">Refresh devices</button>
+        <button id="devices-revoke-all" class="small" data-i18n="settings.devicesRevokeAll">Sign out all devices</button>
+      </div>
+      <div class="devices-wrap" id="devices-wrap" hidden>
+        <table class="devices">
+          <thead>
+            <tr>
+              <th data-i18n="settings.deviceName">Device</th>
+              <th data-i18n="settings.deviceCreated">Created</th>
+              <th data-i18n="settings.deviceLastUsed">Last used</th>
+              <th data-i18n="settings.deviceStatus">Status</th>
+              <th data-i18n="settings.deviceActions">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="devices-list"></tbody>
+        </table>
+      </div>
+      <div id="devices-status" class="hint" role="status" aria-live="polite"></div>
+
+      <div class="section-title" data-i18n="settings.browserSessions">Browser sessions</div>
+      <p class="hint" data-i18n="settings.browserSessionsHint">Active browser logins for this account. Revoking a session signs that browser out.</p>
+      <div class="row-inline">
+        <button id="sessions-refresh" class="small" data-i18n="settings.sessionsRefresh">Refresh sessions</button>
+        <button id="sessions-revoke-all" class="small" data-i18n="settings.sessionsRevokeAll">Sign out other sessions</button>
+      </div>
+      <div class="devices-wrap" id="sessions-wrap" hidden>
+        <table class="devices">
+          <thead>
+            <tr>
+              <th data-i18n="settings.sessionName">Session</th>
+              <th data-i18n="settings.deviceCreated">Created</th>
+              <th data-i18n="settings.sessionLastSeen">Last seen</th>
+              <th data-i18n="settings.sessionExpires">Expires</th>
+              <th data-i18n="settings.deviceStatus">Status</th>
+              <th data-i18n="settings.deviceActions">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="sessions-list"></tbody>
+        </table>
+      </div>
+      <div id="sessions-status" class="hint" role="status" aria-live="polite"></div>
+    </section>
+
+    <section class="panel" id="panel-appearance" role="tabpanel" aria-labelledby="tab-appearance" data-panel="appearance" hidden>
+      <div class="field-row">
+        <label for="zoom" data-i18n="settings.zoom">Zoom</label>
+        <select id="zoom">
+          <option value="0.9">90%</option>
+          <option value="1">100%</option>
+          <option value="1.1">110%</option>
+          <option value="1.25">125%</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <label for="theme" data-i18n="settings.theme">Theme</label>
+        <select id="theme">
+          <option value="system" data-i18n="settings.theme.system">System</option>
+          <option value="light" data-i18n="settings.theme.light">Light</option>
+          <option value="dark" data-i18n="settings.theme.dark">Dark</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <label for="locale" data-i18n="settings.locale">Language</label>
+        <select id="locale">
+          <option value="system" data-i18n="settings.locale.system">System</option>
+          <option value="en" data-i18n="settings.locale.en">English</option>
+          <option value="de" data-i18n="settings.locale.de">German</option>
+        </select>
+      </div>
+
+      <div class="section-title" data-i18n="settings.preferences">Preferences</div>
+      <label class="pref" for="pref-launch">
+        <input type="checkbox" id="pref-launch" />
+        <span><span class="label" data-i18n="settings.launchAtLogin">Launch at login</span></span>
+      </label>
+      <label class="pref" for="pref-minimized">
+        <input type="checkbox" id="pref-minimized" />
+        <span><span class="label" data-i18n="settings.startMinimized">Start in menu bar (no window)</span></span>
+      </label>
+      <label class="pref" for="pref-dock">
+        <input type="checkbox" id="pref-dock" />
+        <span><span class="label" data-i18n="settings.showInDock">Show in Dock</span></span>
+      </label>
+      <label class="pref" for="pref-native-chrome">
+        <input type="checkbox" id="pref-native-chrome" />
+        <span><span class="label" data-i18n="settings.nativeChrome">Use native window chrome</span><span class="desc" data-i18n="settings.nativeChromeHint">Takes effect after restart.</span></span>
+      </label>
+      <label class="pref" for="pref-restore-tabs">
+        <input type="checkbox" id="pref-restore-tabs" />
+        <span><span class="label" data-i18n="settings.restoreTabs">Restore open tabs on launch</span></span>
+      </label>
+      <div class="field-row">
+        <label for="menu-bar-text" data-i18n="settings.menuBarText">Menu bar text</label>
+        <select id="menu-bar-text">
+          <option value="none" data-i18n="settings.menuBarNone">None</option>
+          <option value="score" data-i18n="settings.menuBarScore">Latest score</option>
+          <option value="unread" data-i18n="settings.menuBarUnread">Unread notifications</option>
+        </select>
+      </div>
+      <label class="pref" for="pref-notify">
+        <input type="checkbox" id="pref-notify" />
+        <span><span class="label" data-i18n="settings.notifyFindings">Notify me about new critical/high findings</span></span>
+      </label>
+      <label class="pref" for="pref-governance">
+        <input type="checkbox" id="pref-governance" />
+        <span><span class="label" data-i18n="settings.notifyGovernance">Governance reminders (expiring waivers/risks, daily digest)</span></span>
+      </label>
+      <label class="pref" for="pref-toasts">
+        <input type="checkbox" id="pref-toasts" />
+        <span><span class="label" data-i18n="settings.showToasts">Show in-app toasts</span></span>
+      </label>
+      <label class="pref" for="pref-notify-system">
+        <input type="checkbox" id="pref-notify-system" />
+        <span><span class="label" data-i18n="settings.notifySystem">System notifications</span></span>
+      </label>
+      <label class="pref" for="pref-crash-reports">
+        <input type="checkbox" id="pref-crash-reports" />
+        <span><span class="label" data-i18n="settings.crashReports">Save local crash reports</span><span class="desc" data-i18n="settings.crashReportsHint">Stored on this device only; nothing is uploaded.</span></span>
+      </label>
+      <div class="hint" id="os-notify-status" role="status" aria-live="polite"></div>
+      <label class="pref" for="pref-dnd">
+        <input type="checkbox" id="pref-dnd" />
+        <span><span class="label" data-i18n="settings.dnd">Do Not Disturb</span></span>
+      </label>
+      <div class="field-row">
+        <label for="dnd-start" data-i18n="settings.dndStart">From</label>
+        <input id="dnd-start" type="time" />
+      </div>
+      <div class="field-row">
+        <label for="dnd-end" data-i18n="settings.dndEnd">To</label>
+        <input id="dnd-end" type="time" />
+      </div>
+    </section>
+
+    <section class="panel" id="panel-scans" role="tabpanel" aria-labelledby="tab-scans" data-panel="scans" hidden>
+      <div class="section-title" data-i18n="settings.tab.scans">Scans</div>
+      <p class="hint" data-i18n="settings.scansHint">Folder scans use the server's scan jobs when available.</p>
+      <label for="docker-path" data-i18n="settings.dockerComposePath">Docker Compose directory (optional)</label>
+      <input id="docker-path" type="text" spellcheck="false" autocomplete="off" placeholder="/path/to/waf++" />
+      <div class="row-inline">
+        <button id="open-scan-center" data-i18n="settings.openScanCenter">Open Scan center</button>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-advanced" role="tabpanel" aria-labelledby="tab-advanced" data-panel="advanced" hidden>
+      <div class="section-title" data-i18n="settings.integrations">Integrations</div>
+      <p class="hint" data-i18n="settings.advancedHint">Diagnostics and update settings.</p>
+      <div class="field-row">
+        <label for="update-channel" data-i18n="settings.updateChannel">Update channel</label>
+        <select id="update-channel">
+          <option value="stable" data-i18n="settings.channelStable">Stable</option>
+          <option value="beta" data-i18n="settings.channelBeta">Beta</option>
+        </select>
+      </div>
+      <label for="update-feed" data-i18n="settings.updateFeedUrl">Update feed URL (optional)</label>
+      <input id="update-feed" type="url" spellcheck="false" autocomplete="off" placeholder="https://example.com/wombatpass/latest.json" />
+      <label for="update-feed-beta" data-i18n="settings.updateFeedBeta">Beta feed URL (optional)</label>
+      <input id="update-feed-beta" type="url" spellcheck="false" autocomplete="off" placeholder="https://example.com/wombatpass/beta.json" />
+      <div class="field-row">
+        <label for="update-interval" data-i18n="settings.updateInterval">Automatic check</label>
+        <select id="update-interval">
+          <option value="off" data-i18n="settings.intervalOff">Off</option>
+          <option value="daily" data-i18n="settings.intervalDaily">Daily</option>
+          <option value="weekly" data-i18n="settings.intervalWeekly">Weekly</option>
+        </select>
+      </div>
+      <div class="row-inline">
+        <button id="check-updates" data-i18n="settings.checkUpdates">Check for updates</button>
+        <button id="download-update" class="small" data-i18n="settings.downloadUpdate" hidden>Download update</button>
+        <button id="cancel-update" class="small" data-i18n="settings.cancelUpdate" hidden>Cancel download</button>
+        <button id="open-update" class="small" data-i18n="settings.openUpdate" hidden>Open installer…</button>
+        <button id="show-update" class="small" data-i18n="settings.showUpdate" hidden>Show in folder</button>
+        <button id="snooze-update" class="small" data-i18n="settings.snoozeUpdate" hidden>Remind me later</button>
+      </div>
+      <div class="status" id="update-status" role="status" aria-live="polite" data-i18n="settings.updateNotChecked">Not checked.</div>
+      <pre id="update-notes" class="update-notes" hidden></pre>
+      <div class="row-inline">
+        <button id="clear-recents" class="small" data-i18n="settings.clearPaletteRecents">Clear palette history</button>
+        <button id="clear-local-data" class="small" data-i18n="settings.clearLocalData">Clear local data…</button>
+      </div>
+      <div class="row-inline">
+        <button id="show-tour" class="small" data-i18n="settings.showTour">Show welcome tour</button>
+        <button id="show-whatsnew" class="small" data-i18n="settings.showWhatsNew">What's new</button>
+      </div>
+      <div id="advanced-status" class="hint" role="status" aria-live="polite"></div>
+      <div class="link">
+        <span id="config-path"></span>
+        <span class="sep">·</span>
+        <button id="show-logs" type="button" data-i18n="settings.showLogs">Show logs</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="footer">
+    <button id="cancel" data-i18n="settings.cancel">Cancel</button>
+    <button id="relaunch" class="small" data-i18n="settings.relaunchNow" hidden>Relaunch now</button>
+    <span class="spacer"></span>
+    <button id="save" class="primary" data-i18n="settings.apply">Apply</button>
+  </div>
+
+<script>
+    const api = window.wombatSettings
+    const $ = (id) => document.getElementById(id)
+    let i18n = {}
+    let environments = []
+    let activeId = ''
+    let defaultUrl = ''
+    let deviceAuth = {}
+    let pendingVerificationUrl = ''
+    let activeTab = 'connection'
+    let updateState = null
+    let shellLocale = 'en'
+    let initialSnapshot = ''
+    let initialPreferences = null
+    let initialKinds = {}
+    const TAB_NAMES = ['connection', 'signin', 'appearance', 'scans', 'advanced']
+
+    const tr = (key, fallback) => i18n[key] ?? fallback
+
+    function applyI18n() {
+      for (const el of document.querySelectorAll('[data-i18n]')) {
+        el.textContent = tr(el.dataset.i18n, el.textContent)
+      }
+      for (const el of document.querySelectorAll('[data-i18n-aria-label]')) {
+        el.setAttribute('aria-label', tr(el.dataset.i18nAriaLabel, el.getAttribute('aria-label') || ''))
+      }
+      document.title = tr('settings.title', document.title)
+    }
+
+    function setStatus(text, kind = '') {
+      const status = $('status')
+      status.className = `status ${kind}`
+      status.textContent = text
+    }
+
+    function setUpdateStatus(text, kind = '') {
+      const node = $('update-status')
+      node.className = `status ${kind}`
+      node.textContent = text
+    }
+
+    function renderUpdate(state) {
+      if (!state) return
+      updateState = state
+      const current = state.current || '—'
+      const status = state.state || 'idle'
+      if (status === 'checking') {
+        setUpdateStatus(tr('settings.updateChecking', 'Checking for updates…'))
+      } else if (status === 'available') {
+        setUpdateStatus(tr('settings.updateAvailable', 'Version {latest} is available (installed {current}).').replace('{latest}', state.latest || '').replace('{current}', current), 'ok')
+      } else if (status === 'downloading') {
+        setUpdateStatus(`${tr('settings.updateDownloading', 'Downloading update')} ${state.progress || 0}%`)
+      } else if (status === 'ready') {
+        setUpdateStatus(tr('settings.updateReady', 'Version {latest} is downloaded and ready to install.').replace('{latest}', state.latest || ''), 'ok')
+      } else if (status === 'error') {
+        setUpdateStatus(state.error || tr('settings.updateError', 'Update failed.'), 'error')
+      } else if (state.upToDate) {
+        setUpdateStatus(tr('settings.updateUpToDate', 'Up to date (installed {current}).').replace('{current}', current), 'ok')
+      } else if (state.error) {
+        setUpdateStatus(state.error, 'error')
+      } else {
+        setUpdateStatus(tr('settings.updateNotChecked', 'Not checked.'))
+      }
+
+      $('download-update').hidden = !(status === 'available' && state.url)
+      $('cancel-update').hidden = status !== 'downloading'
+      $('open-update').hidden = status !== 'ready'
+      $('show-update').hidden = status !== 'ready'
+      $('snooze-update').hidden = status !== 'available'
+      const notes = $('update-notes')
+      notes.hidden = !state.notes
+      notes.textContent = state.notes || ''
+    }
+
+    function renderOsNotificationStatus() {
+      const node = $('os-notify-status')
+      if (!node) return
+      if (!('Notification' in window)) {
+        node.textContent = tr('settings.osNotifyUnsupported', 'This system does not expose notification permission to the app.')
+        return
+      }
+      const permission = Notification.permission
+      node.textContent = permission === 'granted'
+        ? tr('settings.osNotifyGranted', 'System notifications are allowed.')
+        : permission === 'denied'
+          ? tr('settings.osNotifyDenied', 'System notifications are blocked in the OS settings.')
+          : tr('settings.osNotifyDefault', 'The OS has not granted notification permission yet.')
+    }
+
+    function formSnapshot() {
+      return JSON.stringify({
+        environments: environments.map(environment => ({
+          id: environment.id,
+          name: environment.name,
+          url: environment.url,
+          kind: environment.kind || 'local',
+        })),
+        activeId,
+        preferences: preferences(),
+      })
+    }
+
+    function updateDirty() {
+      const dirty = initialSnapshot !== '' && formSnapshot() !== initialSnapshot
+      api.setDirty(dirty)
+    }
+
+    function cancelSettings() {
+      if (initialPreferences) {
+        api.setTheme(initialPreferences.theme ?? 'system', false)
+        api.setLocale(initialPreferences.locale ?? 'system', false)
+      }
+      api.setDirty(false)
+      api.close()
+    }
+
+    async function testAllEnvironments() {
+      const node = $('test-all-results')
+      node.textContent = tr('settings.testing', 'Testing…')
+      try {
+        const result = await api.testAll()
+        const rows = (result?.results ?? []).map(entry =>
+          `${entry.ok ? '✓' : '✗'} ${entry.name} — ${entry.ok ? `${entry.latencyMs} ms` : (entry.error || `HTTP ${entry.status}`)}`,
+        )
+        node.textContent = rows.join('\n')
+      } catch (error) {
+        node.textContent = `Test failed: ${error.message}`
+      }
+    }
+
+    function switchTab(name, { focus = false } = {}) {
+      const tab = TAB_NAMES.includes(name) ? name : 'connection'
+      activeTab = tab
+      for (const button of document.querySelectorAll('.tab')) {
+        const active = button.dataset.tab === tab
+        button.setAttribute('aria-selected', active ? 'true' : 'false')
+        button.tabIndex = active ? 0 : -1
+        if (active && focus) button.focus()
+      }
+      for (const panel of document.querySelectorAll('.panel')) {
+        panel.hidden = panel.dataset.panel !== tab
+      }
+      if (tab === 'signin') { loadDevices(); loadSessions() }
+      if (tab === 'advanced') api.updatesGet().then(renderUpdate).catch(() => {})
+    }
+
+    function formatDate(value) {
+      if (!value) return '—'
+      try {
+        return new Intl.DateTimeFormat(shellLocale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+      } catch {
+        return String(value)
+      }
+    }
+
+    async function loadDevices() {
+      const status = $('devices-status')
+      const wrap = $('devices-wrap')
+      const list = $('devices-list')
+      status.textContent = tr('settings.devicesLoading', 'Loading devices…')
+      try {
+        const result = await api.devices()
+        if (!result.ok) {
+          wrap.hidden = true
+          status.textContent = result.message || tr('settings.devicesUnavailable', 'Device list unavailable.')
+          return
+        }
+        const devices = Array.isArray(result.devices) ? result.devices : []
+        list.replaceChildren()
+        wrap.hidden = devices.length === 0
+        if (devices.length === 0) {
+          status.textContent = tr('settings.devicesEmpty', 'No devices yet.')
+          return
+        }
+        status.textContent = ''
+        for (const device of devices) {
+          const row = document.createElement('tr')
+
+          const name = document.createElement('td')
+          const nameText = document.createElement('span')
+          nameText.textContent = device.name || device.id?.slice(0, 8) || '—'
+          name.append(nameText)
+          if (device.current) {
+            const tag = document.createElement('span')
+            tag.className = 'tag current'
+            tag.style.marginLeft = '6px'
+            tag.textContent = tr('settings.deviceCurrent', 'This device')
+            name.append(tag)
+          }
+
+          const created = document.createElement('td')
+          created.className = 'mono'
+          created.textContent = formatDate(device.created_at)
+
+          const lastUsed = document.createElement('td')
+          lastUsed.className = 'mono'
+          lastUsed.textContent = formatDate(device.last_used_at)
+
+          const stateCell = document.createElement('td')
+          const tag = document.createElement('span')
+          tag.className = `tag${device.revoked_at ? ' revoked' : ''}`
+          tag.textContent = device.revoked_at
+            ? tr('settings.deviceRevoked', 'Revoked')
+            : tr('settings.deviceActive', 'Active')
+          stateCell.append(tag)
+
+          const actions = document.createElement('td')
+          actions.className = 'actions'
+          if (!device.revoked_at) {
+            const button = document.createElement('button')
+            button.className = 'small'
+            button.textContent = tr('settings.deviceRevoke', 'Revoke')
+            button.addEventListener('click', () => revokeDevice(device))
+            actions.append(button)
+          }
+
+          row.append(name, created, lastUsed, stateCell, actions)
+          list.append(row)
+        }
+      } catch (error) {
+        wrap.hidden = true
+        status.textContent = `${tr('settings.devicesUnavailable', 'Device list unavailable.')} ${error.message}`
+      }
+    }
+
+    async function loadSessions() {
+      const status = $('sessions-status')
+      const wrap = $('sessions-wrap')
+      const list = $('sessions-list')
+      status.textContent = tr('settings.sessionsLoading', 'Loading sessions…')
+      try {
+        const result = await api.sessions()
+        if (!result.ok) {
+          wrap.hidden = true
+          status.textContent = result.message || tr('settings.sessionsUnavailable', 'Session list unavailable.')
+          return
+        }
+        const sessions = Array.isArray(result.sessions) ? result.sessions : []
+        list.replaceChildren()
+        wrap.hidden = sessions.length === 0
+        if (sessions.length === 0) {
+          status.textContent = tr('settings.sessionsEmpty', 'No active browser sessions.')
+          return
+        }
+        status.textContent = ''
+        for (const session of sessions) {
+          const row = document.createElement('tr')
+          const name = document.createElement('td')
+          name.textContent = session.label || session.user_agent?.slice(0, 60) || session.id?.slice(0, 8) || '—'
+          const created = document.createElement('td')
+          created.className = 'mono'
+          created.textContent = formatDate(session.created_at)
+          const lastSeen = document.createElement('td')
+          lastSeen.className = 'mono'
+          lastSeen.textContent = formatDate(session.last_seen_at)
+          const expires = document.createElement('td')
+          expires.className = 'mono'
+          expires.textContent = formatDate(session.expires_at)
+          const stateCell = document.createElement('td')
+          const tag = document.createElement('span')
+          tag.className = `tag${session.current ? ' current' : ''}`
+          tag.textContent = session.current
+            ? tr('settings.sessionCurrent', 'This session')
+            : tr('settings.deviceActive', 'Active')
+          stateCell.append(tag)
+          const actions = document.createElement('td')
+          actions.className = 'actions'
+          if (!session.current) {
+            const button = document.createElement('button')
+            button.className = 'small'
+            button.textContent = tr('settings.sessionRevoke', 'Sign out')
+            button.addEventListener('click', () => revokeSession(session))
+            actions.append(button)
+          }
+          row.append(name, created, lastSeen, expires, stateCell, actions)
+          list.append(row)
+        }
+      } catch (error) {
+        wrap.hidden = true
+        status.textContent = `${tr('settings.sessionsUnavailable', 'Session list unavailable.')} ${error.message}`
+      }
+    }
+
+    async function revokeSession(session) {
+      const environment = currentEnvironment()
+      const confirmed = await api.confirm({
+        message: tr('settings.sessionRevokeConfirm', 'Sign out this browser session?'),
+        detail: tr('settings.sessionRevokeDetail', 'That browser will need to sign in again. This app session is not affected.'),
+        confirmLabel: tr('settings.sessionRevoke', 'Sign out'),
+        production: environment?.kind === 'production',
+      })
+      if (!confirmed.ok) return
+      const result = await api.revokeSession(session.id)
+      if (!result.ok) {
+        $('sessions-status').textContent = result.message || tr('settings.sessionsUnavailable', 'Session list unavailable.')
+        return
+      }
+      await loadSessions()
+    }
+
+    async function revokeAllSessions() {
+      const environment = currentEnvironment()
+      const confirmed = await api.confirm({
+        message: tr('settings.sessionsRevokeAllConfirm', 'Sign out all other browser sessions?'),
+        detail: tr('settings.sessionsRevokeAllDetail', 'Every browser except this app will need to sign in again.'),
+        confirmLabel: tr('settings.sessionsRevokeAll', 'Sign out others'),
+        production: environment?.kind === 'production',
+      })
+      if (!confirmed.ok) return
+      const result = await api.sessionsRevokeAll()
+      if (!result.ok) {
+        $('sessions-status').textContent = result.message || tr('settings.sessionsUnavailable', 'Session list unavailable.')
+        return
+      }
+      await loadSessions()
+    }
+
+    async function revokeDevice(device) {
+      const environment = currentEnvironment()
+      const detail = [
+        tr('settings.deviceRevokeDetail', 'The token stops working immediately.'),
+        device.current ? tr('settings.deviceRevokeCurrent', 'This is the device the app is using. You will be signed out.') : '',
+      ].filter(Boolean).join(' ')
+      const confirmed = await api.confirm({
+        message: tr('settings.deviceRevokeConfirm', 'Revoke this device?'),
+        detail,
+        confirmLabel: tr('settings.deviceRevoke', 'Revoke'),
+        production: environment?.kind === 'production',
+      })
+      if (!confirmed.ok) return
+
+      const result = await api.revokeDevice(device.id)
+      if (!result.ok) {
+        $('devices-status').textContent = result.message || tr('settings.devicesUnavailable', 'Device list unavailable.')
+        return
+      }
+      if (device.current) {
+        deviceAuth[activeId] = { signedIn: false }
+        renderDeviceStatus()
+      }
+      await loadDevices()
+    }
+
+    function setDeviceStatus(text, kind = '') {
+      const status = $('device-status')
+      status.className = `status ${kind}`
+      status.textContent = text
+    }
+
+    function renderDeviceStatus() {
+      const status = deviceAuth[activeId] ?? { signedIn: false }
+      $('device-signout').disabled = !status.signedIn
+      if (status.signedIn) {
+        const since = status.savedAt ? new Date(status.savedAt).toLocaleDateString() : ''
+        setDeviceStatus(
+          `Signed in as ${status.username || 'user'}${status.deviceName ? ` · ${status.deviceName}` : ''}${since ? ` · since ${since}` : ''}`,
+          'ok',
+        )
+      } else {
+        setDeviceStatus(tr('settings.deviceNotSignedIn', 'Not signed in — using the dashboard browser session.'))
+      }
+    }
+
+    function currentEnvironment() {
+      return environments.find(environment => environment.id === activeId) ?? environments[0]
+    }
+
+    function syncFieldsToEnvironment() {
+      const environment = currentEnvironment()
+      if (!environment) return
+      environment.name = $('env-name').value.trim() || environment.url || 'Environment'
+      environment.url = $('server-url').value.trim()
+      environment.kind = ['local', 'staging', 'production'].includes($('env-kind').value)
+        ? $('env-kind').value
+        : 'local'
+    }
+
+    function renderEnvironmentSelect() {
+      const select = $('env-select')
+      select.replaceChildren()
+      for (const environment of environments) {
+        const option = document.createElement('option')
+        option.value = environment.id
+        const auth = deviceAuth[environment.id]
+        const suffix = [environment.kind === 'production' ? 'PROD' : '', auth?.signedIn ? (auth.deviceName || 'device') : '']
+          .filter(Boolean).join(' · ')
+        option.textContent = suffix ? `${environment.name} — ${suffix}` : environment.name
+        select.append(option)
+      }
+      select.value = activeId
+      $('env-delete').disabled = environments.length <= 1 || activeId === 'local'
+    }
+
+    function loadEnvironmentFields() {
+      const environment = currentEnvironment()
+      if (!environment) return
+      $('env-name').value = environment.name
+      $('server-url').value = environment.url
+      $('env-kind').value = environment.kind || 'local'
+    }
+
+    function selectEnvironment(id) {
+      syncFieldsToEnvironment()
+      activeId = id
+      renderEnvironmentSelect()
+      loadEnvironmentFields()
+      renderDeviceStatus()
+      updateDirty()
+      if (activeTab === 'signin') loadDevices()
+    }
+
+    async function init() {
+      const info = await api.get()
+      i18n = info.i18n ?? {}
+      if (info.locale) {
+        document.documentElement.lang = info.locale
+        shellLocale = info.locale
+      }
+      applyI18n()
+
+      defaultUrl = info.defaultUrl
+      environments = (info.environments ?? []).map(environment => ({ ...environment }))
+      activeId = info.activeEnvironmentId ?? environments[0]?.id ?? ''
+      deviceAuth = info.deviceAuth ?? {}
+      $('default-url').textContent = info.defaultUrl
+      $('config-path').textContent = info.configPath
+      renderEnvironmentSelect()
+      loadEnvironmentFields()
+      renderDeviceStatus()
+
+      const preferences = info.preferences ?? {}
+      $('pref-launch').checked = Boolean(preferences.launchAtLogin)
+      $('pref-minimized').checked = Boolean(preferences.startMinimized)
+      $('pref-dock').checked = preferences.showInDock !== false
+      $('pref-native-chrome').checked = preferences.nativeChrome !== false
+      $('pref-restore-tabs').checked = preferences.restoreTabs === true
+      $('pref-notify').checked = Boolean(preferences.notifyFindings)
+      $('pref-governance').checked = Boolean(preferences.notifyGovernance)
+      $('pref-toasts').checked = preferences.showToasts !== false
+      $('pref-notify-system').checked = preferences.notifySystem !== false
+      $('pref-crash-reports').checked = preferences.crashReports === true
+      $('pref-dnd').checked = preferences.dndEnabled === true
+      $('dnd-start').value = preferences.dndStart ?? '22:00'
+      $('dnd-end').value = preferences.dndEnd ?? '07:00'
+      renderOsNotificationStatus()
+      $('menu-bar-text').value = preferences.menuBarText ?? 'none'
+      $('update-feed').value = preferences.updateFeedUrl ?? ''
+      $('update-feed-beta').value = preferences.updateFeedUrlBeta ?? ''
+      $('update-channel').value = preferences.updateChannel === 'beta' ? 'beta' : 'stable'
+      $('update-interval').value = ['off', 'daily', 'weekly'].includes(preferences.updateCheckInterval) ? preferences.updateCheckInterval : 'off'
+      $('docker-path').value = preferences.dockerComposePath ?? ''
+      $('zoom').value = String(preferences.zoomFactor ?? 1)
+      $('theme').value = preferences.theme ?? 'system'
+      $('locale').value = preferences.locale ?? 'system'
+
+      api.updatesGet().then(renderUpdate).catch(() => {})
+      api.onUpdateState(renderUpdate)
+
+      const requestedTab = new URLSearchParams(location.search).get('tab')
+      switchTab(requestedTab || 'connection')
+      initialPreferences = { ...preferences() }
+      initialKinds = Object.fromEntries(environments.map(environment => [environment.id, environment.kind || 'local']))
+      initialSnapshot = formSnapshot()
+      api.setDirty(false)
+      $('server-url').focus()
+      $('server-url').select()
+    }
+
+    function preferences() {
+      return {
+        launchAtLogin: $('pref-launch').checked,
+        startMinimized: $('pref-minimized').checked,
+        showInDock: $('pref-dock').checked,
+        nativeChrome: $('pref-native-chrome').checked,
+        restoreTabs: $('pref-restore-tabs').checked,
+        menuBarText: $('menu-bar-text').value,
+        notifyFindings: $('pref-notify').checked,
+        notifyGovernance: $('pref-governance').checked,
+        showToasts: $('pref-toasts').checked,
+        notifySystem: $('pref-notify-system').checked,
+        crashReports: $('pref-crash-reports').checked,
+        dndEnabled: $('pref-dnd').checked,
+        dndStart: $('dnd-start').value || '22:00',
+        dndEnd: $('dnd-end').value || '07:00',
+        updateFeedUrlBeta: $('update-feed-beta').value,
+        updateChannel: $('update-channel').value,
+        updateCheckInterval: $('update-interval').value,
+        zoomFactor: Number($('zoom').value) || 1,
+        theme: $('theme').value,
+        locale: $('locale').value,
+        updateFeedUrl: $('update-feed').value,
+        dockerComposePath: $('docker-path').value,
+      }
+    }
+
+    async function signInDevice() {
+      syncFieldsToEnvironment()
+      const environment = currentEnvironment()
+      if (!environment || !/^https?:\/\//i.test(environment.url)) {
+        setDeviceStatus(tr('settings.invalid', 'Enter a valid http(s) URL.'), 'error')
+        return
+      }
+
+      const signInButton = $('device-signin')
+      signInButton.disabled = true
+
+      // Main only accepts a token for the *saved* environment URL (the proxy
+      // compares the token record URL with the configured URL). Saving here
+      // would close this window (see save()), so require an explicit Save.
+      setDeviceStatus(tr('settings.deviceWaiting', 'Starting browser sign-in…'))
+      try {
+        const result = await api.deviceSignIn({
+          environmentId: activeId,
+          url: currentEnvironment().url,
+        })
+        if (result.ok) {
+          deviceAuth[activeId] = {
+            signedIn: true,
+            username: result.username,
+            deviceName: result.deviceName,
+            deviceId: result.deviceId,
+            savedAt: new Date().toISOString(),
+          }
+          pendingVerificationUrl = ''
+          $('device-open').hidden = true
+          renderDeviceStatus()
+          loadDevices()
+        } else if (!result.cancelled) {
+          setDeviceStatus(result.message || 'Sign-in failed.', 'error')
+        }
+      } catch (error) {
+        setDeviceStatus(`Sign-in failed: ${error.message}`, 'error')
+      } finally {
+        signInButton.disabled = false
+      }
+    }
+
+    async function signOutDevice() {
+      const environment = currentEnvironment()
+      if (!environment) return
+      if (environment.kind === 'production') {
+        const confirmed = await api.confirm({
+          message: tr('settings.deviceSignOut', 'Sign out'),
+          detail: tr('settings.deviceSignOutProduction', 'The revocable device token will stop working immediately.'),
+          confirmLabel: tr('settings.deviceSignOut', 'Sign out'),
+          production: true,
+        })
+        if (!confirmed.ok) return
+      }
+      $('device-signout').disabled = true
+      setDeviceStatus(tr('settings.deviceSigningOut', 'Signing out…'))
+      try {
+        const result = await api.deviceSignOut({ environmentId: activeId, url: environment.url })
+        deviceAuth[activeId] = { signedIn: false }
+        pendingVerificationUrl = ''
+        $('device-open').hidden = true
+        renderDeviceStatus()
+        loadDevices()
+        if (!result.ok) setDeviceStatus(result.message || 'Sign-out failed.', 'error')
+        else if (result.message && result.message.includes('HTTP')) setDeviceStatus(result.message, 'error')
+      } catch (error) {
+        deviceAuth[activeId] = { signedIn: false }
+        renderDeviceStatus()
+        setDeviceStatus(`Sign-out failed: ${error.message}`, 'error')
+      }
+    }
+
+    async function test() {
+      const button = $('test')
+      button.disabled = true
+      setStatus(tr('settings.testing', 'Testing…'))
+      try {
+        const result = await api.test($('server-url').value)
+        setStatus(result.message, result.ok ? 'ok' : 'error')
+      } catch (error) {
+        setStatus(`Test failed: ${error.message}`, 'error')
+      } finally {
+        button.disabled = false
+      }
+    }
+
+    async function detect() {
+      const button = $('detect')
+      const box = $('detected')
+      const list = $('detected-list')
+      button.disabled = true
+      setStatus(tr('settings.detecting', 'Detecting…'))
+      try {
+        const result = await api.detect()
+        list.replaceChildren()
+        box.hidden = false
+
+        if (!result.candidates?.length) {
+          list.textContent = tr('settings.noCandidates', 'No local servers found.')
+          return
+        }
+
+        for (const candidate of result.candidates) {
+          const item = document.createElement('button')
+          item.type = 'button'
+          item.className = 'candidate'
+
+          const url = document.createElement('span')
+          url.className = 'url'
+          url.textContent = candidate.url
+
+          const source = document.createElement('span')
+          source.className = 'source'
+          source.textContent = `${candidate.status} · ${candidate.source}`
+
+          item.append(url, source)
+          item.addEventListener('click', () => {
+            $('server-url').value = candidate.url
+            if (!$('env-name').value.trim() || /^new environment$/i.test($('env-name').value)) {
+              $('env-name').value = candidate.source.startsWith('docker:')
+                ? 'Local Docker'
+                : `Local ${candidate.url.replace(/^https?:\/\//, '')}`
+            }
+            setStatus(`Using ${candidate.url}`, 'ok')
+          })
+          list.append(item)
+        }
+        setStatus(`${result.candidates.length} server(s) found.`, 'ok')
+      } catch (error) {
+        setStatus(`Detect failed: ${error.message}`, 'error')
+      } finally {
+        button.disabled = false
+      }
+    }
+
+    async function save() {
+      syncFieldsToEnvironment()
+
+      const becameProduction = environments.filter(environment => (
+        environment.kind === 'production' && initialKinds[environment.id] !== 'production'
+      ))
+      if (becameProduction.length) {
+        const confirmed = await api.confirm({
+          message: tr('settings.productionConfirm', 'Mark this environment as production?'),
+          detail: `${becameProduction.map(environment => environment.name).join(', ')}\n\n${tr('settings.productionConfirmDetail', 'Destructive stack actions will require an extra confirmation.')}`,
+          confirmLabel: tr('settings.apply', 'Apply'),
+          production: true,
+        })
+        if (!confirmed.ok) return
+      }
+
+      for (const environment of environments) {
+        if (!/^https?:\/\//i.test(environment.url)) {
+          setStatus(`${tr('settings.invalid', 'Enter a valid http(s) URL.')} (${environment.name})`, 'error')
+          return
+        }
+      }
+
+      const button = $('save')
+      button.disabled = true
+      try {
+        const result = await api.save({
+          environments,
+          activeEnvironmentId: activeId,
+          preferences: preferences(),
+        })
+        if (!result.ok) {
+          setStatus(result.message, 'error')
+          return
+        }
+        api.setDirty(false)
+        if (result.restartRequired) {
+          setStatus(tr('settings.restartRequired', 'Saved. Restart the app to apply the native window chrome setting.'), 'ok')
+          $('relaunch').hidden = false
+          return
+        }
+        setStatus(`${tr('settings.saved', 'Saved.')} ${result.serverUrl}`, 'ok')
+        setTimeout(() => api.close(), 350)
+      } catch (error) {
+        setStatus(`Save failed: ${error.message}`, 'error')
+      } finally {
+        button.disabled = false
+      }
+    }
+
+    $('env-select').addEventListener('change', (event) => selectEnvironment(event.target.value))
+    $('env-new').addEventListener('click', () => {
+      syncFieldsToEnvironment()
+      const environment = {
+        id: `env-${Date.now()}`,
+        name: 'New environment',
+        url: $('server-url').value.trim() || defaultUrl,
+        kind: 'local',
+      }
+      environments.push(environment)
+      activeId = environment.id
+      renderEnvironmentSelect()
+      loadEnvironmentFields()
+      updateDirty()
+      $('env-name').focus()
+      $('env-name').select()
+    })
+    $('env-delete').addEventListener('click', async () => {
+      if (environments.length <= 1 || activeId === 'local') return
+      const environment = currentEnvironment()
+      if (!environment) return
+      const confirmed = await api.confirm({
+        message: tr('settings.deleteEnvironmentConfirm', 'Delete this environment?'),
+        detail: `${environment.name}\n${tr('settings.deleteEnvironmentDetail', 'Its local device token and server URL will be removed from this app.')}`,
+        confirmLabel: tr('settings.deleteEnvironment', 'Delete'),
+        production: environment.kind === 'production',
+      })
+      if (!confirmed.ok) return
+      environments = environments.filter(entry => entry.id !== activeId)
+      activeId = environments[0].id
+      renderEnvironmentSelect()
+      loadEnvironmentFields()
+      updateDirty()
+    })
+
+    api.onDeviceStatus((payload) => {
+      if (!payload || payload.environmentId !== activeId) return
+      pendingVerificationUrl = payload.verificationUrl || pendingVerificationUrl
+      $('device-open').hidden = !pendingVerificationUrl
+      if (payload.state === 'waiting') {
+        $('device-signin').disabled = true
+        setDeviceStatus(payload.message, '')
+      } else if (payload.state === 'success') {
+        $('device-signin').disabled = false
+        deviceAuth[activeId] = {
+          signedIn: true,
+          username: payload.username,
+          deviceName: payload.deviceName,
+          deviceId: payload.deviceId,
+          savedAt: new Date().toISOString(),
+        }
+        renderDeviceStatus()
+      } else if (payload.state === 'error') {
+        $('device-signin').disabled = false
+        setDeviceStatus(payload.message, 'error')
+      } else if (payload.state === 'cancelled') {
+        $('device-signin').disabled = false
+      }
+    })
+
+    api.onI18n((payload) => {
+      if (!payload?.messages) return
+      i18n = payload.messages
+      if (payload.locale) {
+        document.documentElement.lang = payload.locale
+        shellLocale = payload.locale
+      }
+      applyI18n()
+    })
+
+    $('device-signin').addEventListener('click', signInDevice)
+    $('device-signout').addEventListener('click', signOutDevice)
+    $('device-open').addEventListener('click', () => {
+      if (pendingVerificationUrl) api.openExternal(pendingVerificationUrl)
+    })
+
+    for (const tab of document.querySelectorAll('.tab')) {
+      tab.addEventListener('click', () => switchTab(tab.dataset.tab, { focus: true }))
+      tab.addEventListener('keydown', (event) => {
+        const index = TAB_NAMES.indexOf(tab.dataset.tab)
+        let next = null
+        if (event.key === 'ArrowRight') next = (index + 1) % TAB_NAMES.length
+        else if (event.key === 'ArrowLeft') next = (index - 1 + TAB_NAMES.length) % TAB_NAMES.length
+        else if (event.key === 'Home') next = 0
+        else if (event.key === 'End') next = TAB_NAMES.length - 1
+        if (next === null) return
+        event.preventDefault()
+        switchTab(TAB_NAMES[next], { focus: true })
+      })
+    }
+    api.onOpenTab((tab) => switchTab(tab, { focus: true }))
+
+    $('theme').addEventListener('change', () => { api.setTheme($('theme').value, false); updateDirty() })
+    $('locale').addEventListener('change', () => { api.setLocale($('locale').value, false); updateDirty() })
+    $('devices-refresh').addEventListener('click', loadDevices)
+    $('devices-revoke-all').addEventListener('click', async () => {
+      const confirmed = await api.confirm({
+        message: tr('settings.devicesRevokeAllConfirm', 'Sign out all devices?'),
+        detail: tr('settings.devicesRevokeAllDetail', 'This app will also be signed out; you will need to sign in again.'),
+        confirmLabel: tr('settings.devicesRevokeAll', 'Sign out all'),
+        production: currentEnvironment()?.kind === 'production',
+      })
+      if (!confirmed.ok) return
+      const result = await api.devicesRevokeAll()
+      if (!result.ok) {
+        $('devices-status').textContent = result.message || tr('settings.devicesUnavailable', 'Device list unavailable.')
+        return
+      }
+      deviceAuth[activeId] = { signedIn: false }
+      renderDeviceStatus()
+      await loadDevices()
+      await loadSessions()
+    })
+    $('sessions-refresh').addEventListener('click', loadSessions)
+    $('sessions-revoke-all').addEventListener('click', revokeAllSessions)
+    $('open-scan-center').addEventListener('click', () => api.openScan())
+    $('check-updates').addEventListener('click', async () => {
+      const beta = $('update-channel').value === 'beta' && $('update-feed-beta').value.trim()
+      await api.updatesCheck(beta ? $('update-feed-beta').value.trim() : $('update-feed').value.trim())
+    })
+    $('download-update').addEventListener('click', () => api.updatesDownload())
+    $('cancel-update').addEventListener('click', () => api.updatesCancel())
+    $('open-update').addEventListener('click', () => api.updatesOpen())
+    $('show-update').addEventListener('click', () => api.updatesShow())
+    $('snooze-update').addEventListener('click', () => api.updatesSnooze(24))
+    $('show-tour').addEventListener('click', async () => {
+      await api.showOnboarding('onboarding')
+      api.close()
+    })
+    $('show-whatsnew').addEventListener('click', async () => {
+      await api.showOnboarding('whatsnew')
+      api.close()
+    })
+    $('clear-local-data').addEventListener('click', async () => {
+      const confirmed = await api.confirm({
+        message: tr('settings.clearLocalDataConfirm', 'Clear local app data?'),
+        detail: tr('settings.clearLocalDataDetail', 'Device tokens, palette history, cached sessions and window state will be removed. Your server data is not changed.'),
+        confirmLabel: tr('settings.clearLocalData', 'Clear local data'),
+        production: currentEnvironment()?.kind === 'production',
+      })
+      if (!confirmed.ok) return
+      const result = await api.clearLocalData()
+      $('advanced-status').textContent = result.ok
+        ? tr('settings.clearLocalDataDone', 'Local data cleared. You may need to sign in again.')
+        : (result.message || tr('settings.clearLocalDataFailed', 'Could not clear local data.'))
+    })
+
+    $('clear-recents').addEventListener('click', async () => {
+      await api.clearPaletteRecents()
+      $('advanced-status').textContent = tr('settings.paletteCleared', 'Palette history cleared.')
+    })
+
+    $('test').addEventListener('click', test)
+    $('test-all').addEventListener('click', testAllEnvironments)
+    $('relaunch').addEventListener('click', () => api.relaunch())
+    document.querySelector('.content').addEventListener('input', updateDirty)
+    document.querySelector('.content').addEventListener('change', updateDirty)
+    $('detect').addEventListener('click', detect)
+    $('save').addEventListener('click', save)
+    $('cancel').addEventListener('click', cancelSettings)
+    $('show-logs').addEventListener('click', () => api.showLogs())
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') cancelSettings()
+      if (event.key === 'Enter' && event.metaKey) save()
+    })
+
+    init()
+  </script>
+</body>
+</html>

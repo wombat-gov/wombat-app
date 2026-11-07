@@ -1,0 +1,90 @@
+appId: com.wombatpass.dashboard
+productName: WOMBATpass Dashboard
+copyright: Copyright © 2026 WOMBAT
+
+directories:
+  output: release
+  buildResources: build
+
+# Only the runtime files go into app.asar. The dashboard bundle is shipped as
+# an unpacked resource so the local static server can stream it from disk.
+files:
+  - package.json
+  - src/**/*
+  - "!src/**/*.map"
+
+extraResources:
+  - from: build/dashboard
+    to: dashboard
+    filter:
+      - "**/*"
+  - from: src/assets
+    to: assets
+    filter:
+      - "**/*"
+  - from: build/sbom.cdx.json
+    to: sbom.cdx.json
+
+asar: true
+
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  protocols:
+    - name: WOMBATpass Dashboard
+      schemes:
+        - wombatpass
+  # Allow dropping a folder on the dock icon to scan it (macOS).
+  extendInfo:
+    CFBundleDocumentTypes:
+      - CFBundleTypeName: IaC Folder
+        CFBundleTypeRole: Viewer
+        LSHandlerRank: Alternate
+        LSItemContentTypes:
+          - public.folder
+  target:
+    - dmg
+    - zip
+  # Unsigned local build: no Developer ID, no notarization. Apps built on this
+  # machine are not quarantined, so they launch normally.
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+
+dmg:
+  title: WOMBATpass Dashboard
+  background: background.png
+  window:
+    width: 540
+    height: 380
+  contents:
+    - x: 130
+      y: 220
+      type: file
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+afterPack: scripts/after-pack.cjs
+win:
+  icon: build/icon.ico
+  target:
+    - nsis
+    - zip
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+
+linux:
+  icon: build/icon.png
+  category: Development
+  target:
+    - AppImage
+    - deb
+
+afterSign: scripts/notarize.cjs
+
+artifactName: ${productName}-${version}-${arch}.${ext}

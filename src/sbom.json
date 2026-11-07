@@ -1,0 +1,65 @@
+{
+  "generatedAt": "2026-11-07T21:47:43.461Z",
+  "app": {
+    "name": "WOMBATpass Dashboard",
+    "version": "1.0.0"
+  },
+  "components": [
+    {
+      "name": "@tanstack/react-query",
+      "version": "5.107.0",
+      "license": "MIT",
+      "scope": "dashboard"
+    },
+    {
+      "name": "electron",
+      "version": "45.2.3",
+      "license": "MIT",
+      "scope": "app"
+    },
+    {
+      "name": "maplibre-gl",
+      "version": "6.12.0",
+      "license": "BSD-3-Clause",
+      "scope": "dashboard"
+    },
+    {
+      "name": "react",
+      "version": "18.3.1",
+      "license": "MIT",
+      "scope": "dashboard"
+    },
+    {
+      "name": "react-dom",
+      "version": "18.3.1",
+      "license": "MIT",
+      "scope": "dashboard"
+    },
+    {
+      "name": "react-map-gl",
+      "version": "8.1.3",
+      "license": "MIT",
+      "scope": "dashboard"
+    },
+    {
+      "name": "react-router-dom",
+      "version": "7.18.5",
+      "license": "MIT",
+      "scope": "dashboard"
+    },
+    {
+      "name": "recharts",
+      "version": "2.15.4",
+      "license": "MIT",
+      "scope": "dashboard"
+    }
+  ],
+  "summary": {
+    "count": 8,
+    "licenses": {
+      "MIT": 7,
+      "BSD-3-Clause": 1
+    },
+    "note": "Direct runtime dependencies. Build/test tooling excluded. Electron bundles Chromium and Node.js under their own licenses."
+  }
+}

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Container logs</title>
+  <style>
+    :root {
+      --bg: #0b0f14; --surface: #141a22; --surface-2: #1a222c; --border: #26313d;
+      --text: #d7e2ef; --muted: #93a3b5; --accent: #4f8cff; --err: #f85149;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; padding: 12px; background: var(--bg); color: var(--text);
+      font: 12px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: flex; flex-direction: column; gap: 8px; user-select: none;
+    }
+    header { display: flex; align-items: center; gap: 8px; }
+    h1 { margin: 0; font-size: 13px; font-weight: 700; white-space: nowrap; }
+    .muted { color: var(--muted); }
+    .spacer { flex: 1; }
+    input[type="search"] {
+      width: 180px; padding: 5px 8px; border-radius: 7px; border: 1px solid var(--border);
+      background: var(--surface-2); color: var(--text); font: inherit; font-size: 11px; outline: none;
+    }
+    input[type="search"]:focus { border-color: var(--accent); }
+    button {
+      padding: 5px 9px; border-radius: 7px; border: 1px solid var(--border);
+      background: var(--surface-2); color: var(--text); font: inherit; font-size: 11px;
+      font-weight: 600; cursor: pointer;
+    }
+    button:hover { border-color: #3a4756; }
+    button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    pre {
+      flex: 1; margin: 0; padding: 10px; overflow: auto;
+      background: #070b10; border: 1px solid var(--border); border-radius: 10px;
+      font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap; word-break: break-word; user-select: text;
+    }
+    .error { color: var(--err); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 id="title">Logs</h1>
+    <span class="muted" id="count"></span>
+    <span class="spacer"></span>
+    <input type="search" id="search" placeholder="Filter…" />
+    <button id="follow" class="active" title="Scroll to the newest line">Follow</button>
+    <button id="pause">Pause</button>
+    <button id="clear">Clear</button>
+    <button id="copy">Copy</button>
+    <button id="close">Close</button>
+  </header>
+  <pre id="output"></pre>
+
+  <script>
+    const api = window.logsApi
+    const output = document.getElementById('output')
+    const count = document.getElementById('count')
+    const search = document.getElementById('search')
+    const followBtn = document.getElementById('follow')
+    const pauseBtn = document.getElementById('pause')
+
+    const MAX_LINES = 5000
+    let lines = []
+    let paused = false
+    let follow = true
+    let filter = ''
+    let container = ''
+
+    function visibleLines() {
+      return filter ? lines.filter(line => line.toLowerCase().includes(filter)) : lines
+    }
+
+    function render() {
+      const shown = visibleLines()
+      output.textContent = shown.join('\n')
+      count.textContent = `${shown.length}/${lines.length}`
+      if (follow && !paused) output.scrollTop = output.scrollHeight
+    }
+
+    function append(line, error = false) {
+      lines.push(error ? `[error] ${line}` : line)
+      if (lines.length > MAX_LINES) lines = lines.slice(lines.length - MAX_LINES)
+      if (!paused && (!filter || line.toLowerCase().includes(filter))) render()
+      else if (paused) count.textContent = `${visibleLines().length}/${lines.length} (paused)`
+    }
+
+    api.onInit((data) => {
+      container = data.container
+      document.getElementById('title').textContent = `Logs — ${container}`
+      lines = []
+      render()
+    })
+    api.onLine((line) => append(line.text, line.error))
+    api.onEnd(() => append('— log stream ended —'))
+
+    document.getElementById('search').addEventListener('input', (event) => {
+      filter = event.target.value.trim().toLowerCase()
+      render()
+    })
+    followBtn.addEventListener('click', () => {
+      follow = !follow
+      followBtn.classList.toggle('active', follow)
+      if (follow) output.scrollTop = output.scrollHeight
+    })
+    pauseBtn.addEventListener('click', () => {
+      paused = !paused
+      pauseBtn.textContent = paused ? 'Resume' : 'Pause'
+      pauseBtn.classList.toggle('active', paused)
+      if (!paused) render()
+    })
+    document.getElementById('clear').addEventListener('click', () => {
+      lines = []
+      render()
+    })
+    document.getElementById('copy').addEventListener('click', async () => {
+      await api.copy(visibleLines().join('\n'))
+    })
+    document.getElementById('close').addEventListener('click', () => api.close())
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') api.close()
+    })
+
+    render()
+  </script>
+</body>
+</html>

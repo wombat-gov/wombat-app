@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Command Palette</title>
+  <style>
+    :root {
+      --bg: #0b0f14; --surface: #141a22; --surface-2: #1a222c; --border: #26313d;
+      --text: #e6edf5; --muted: #93a3b5; --accent: #4f8cff;
+      --ok: #3fb950; --warn: #d29922; --err: #f85149;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased; user-select: none;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .search {
+      display: flex; align-items: center; gap: 10px;
+      padding: 14px 16px; border-bottom: 1px solid var(--border);
+    }
+    .search svg { flex: none; color: var(--muted); }
+    input {
+      flex: 1; background: transparent; border: 0; outline: none;
+      color: var(--text); font: inherit; font-size: 16px;
+    }
+    input::placeholder { color: var(--muted); }
+    .kbd { color: var(--muted); font: 10px ui-monospace, Menlo, monospace; border: 1px solid var(--border); padding: 2px 6px; border-radius: 5px; }
+    .list { flex: 1; overflow-y: auto; padding: 6px 8px 10px; }
+    .list::-webkit-scrollbar { width: 8px; }
+    .list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .section { padding: 8px 8px 4px; font-size: 9px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; color: var(--muted); }
+    .item {
+      display: flex; align-items: center; gap: 10px; padding: 8px 9px; border-radius: 8px;
+      cursor: pointer; border: 1px solid transparent;
+    }
+    .item.selected { background: var(--surface-2); border-color: var(--border); }
+    .item .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .item .sub { color: var(--muted); font-size: 11px; flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .badge { font-size: 9px; font-weight: 700; color: var(--muted); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; flex: none; }
+    .score { font-weight: 700; }
+    .score.ok { color: var(--ok); } .score.warn { color: var(--warn); } .score.err { color: var(--err); }
+    .empty { padding: 30px 16px; text-align: center; color: var(--muted); }
+    footer {
+      display: flex; gap: 12px; padding: 8px 16px; border-top: 1px solid var(--border);
+      color: var(--muted); font-size: 10px;
+    }
+    footer .spacer { flex: 1; }
+    footer .prefixes { letter-spacing: .08em; }
+    .item .label mark { background: color-mix(in srgb, var(--accent) 28%, transparent); color: var(--text); border-radius: 2px; padding: 0 1px; }
+    .hidden { display: none; }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="search">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.6" />
+      <path d="M11 11 L14.5 14.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+    </svg>
+    <input id="query" autocomplete="off" spellcheck="false" role="combobox"
+           aria-expanded="true" aria-controls="list" aria-autocomplete="list"
+           aria-label="Search"
+           placeholder="Search runs, findings, controls, pages, actions…" />
+    <span class="kbd">esc</span>
+  </div>
+  <div class="list" id="list" role="listbox" aria-label="Results"></div>
+  <div id="palette-live" class="sr-only" aria-live="polite"></div>
+  <footer>
+    <span id="footer-navigate">↑↓ navigate</span>
+    <span id="footer-open">↵ open</span>
+    <span id="footer-prefixes" class="prefixes" title="Filters">&gt; @ # : ~</span>
+    <span id="footer-pin">⌘D pin</span>
+    <span class="spacer"></span>
+    <span id="hint"></span>
+  </footer>
+
+  <script>
+    const api = window.paletteApi
+    const query = document.getElementById('query')
+    const list = document.getElementById('list')
+    const hint = document.getElementById('hint')
+
+    const SEARCH_DEBOUNCE_MS = 250
+    const RESULT_BADGES = {
+      run: 'Run',
+      finding: 'Finding',
+      control: 'Control',
+      waiver: 'Waiver',
+      risk: 'Risk',
+      project: 'Project',
+    }
+
+    let data = { actions: [], runs: [], pages: [], controls: [], environments: [], favorites: [], recents: { commands: [], searches: [] } }
+    let i18n = {}
+    const tr = (key, fallback) => i18n[key] ?? fallback
+    const live = document.getElementById('palette-live')
+    let items = []
+    let selected = 0
+    let searchTimer = null
+    let searchSeq = 0
+    let searchState = 'idle'
+    let highlightTerm = ''
+
+    function rel(iso) {
+      if (!iso) return ''
+      const diff = Date.now() - new Date(iso).getTime()
+      if (!Number.isFinite(diff)) return ''
+      const minutes = Math.round(diff / 60000)
+      if (minutes < 60) return `${Math.max(0, minutes)}m`
+      const hours = Math.round(minutes / 60)
+      if (hours < 24) return `${hours}h`
+      return `${Math.round(hours / 24)}d`
+    }
+
+    function score(haystack, needle) {
+      if (!needle) return 1
+      const text = haystack.toLowerCase()
+      const index = text.indexOf(needle)
+      if (index >= 0) return 1000 - index
+      let position = 0
+      for (const char of text) {
+        if (char === needle[position]) position += 1
+        if (position === needle.length) return 100
+      }
+      return 0
+    }
+
+    function tone(value) {
+      if (value == null) return ''
+      return value >= 80 ? 'ok' : value >= 50 ? 'warn' : 'err'
+    }
+
+    function appendHighlighted(node, text, term) {
+      const value = String(text ?? '')
+      const needle = String(term ?? '').toLowerCase()
+      const index = needle ? value.toLowerCase().indexOf(needle) : -1
+      if (index < 0) {
+        node.textContent = value
+        return
+      }
+      node.append(document.createTextNode(value.slice(0, index)))
+      const mark = document.createElement('mark')
+      mark.textContent = value.slice(index, index + needle.length)
+      node.append(mark, document.createTextNode(value.slice(index + needle.length)))
+    }
+
+    function section(title, entries) {
+      if (!entries.length) return
+      const header = document.createElement('div')
+      header.className = 'section'
+      header.setAttribute('role', 'presentation')
+      header.textContent = title
+      list.append(header)
+      for (const entry of entries) list.append(renderItem(entry))
+    }
+
+    function renderItem(entry) {
+      const node = document.createElement('div')
+      node.className = `item${entry.index === selected ? ' selected' : ''}`
+      node.dataset.index = String(entry.index)
+      node.id = `palette-item-${entry.index}`
+      node.setAttribute('role', 'option')
+      node.setAttribute('aria-selected', entry.index === selected ? 'true' : 'false')
+
+      if (entry.badge) {
+        const badge = document.createElement('span')
+        badge.className = 'badge'
+        badge.textContent = entry.badge
+        node.append(badge)
+      }
+
+      const label = document.createElement('span')
+      label.className = 'label'
+      appendHighlighted(label, entry.label, highlightTerm)
+      node.append(label)
+
+      if (entry.score != null) {
+        const scoreNode = document.createElement('span')
+        scoreNode.className = `sub score ${tone(entry.score)}`
+        scoreNode.textContent = `${entry.score}/100`
+        node.append(scoreNode)
+      }
+
+      if (entry.sub) {
+        const sub = document.createElement('span')
+        sub.className = 'sub'
+        sub.textContent = entry.sub
+        node.append(sub)
+      }
+
+      node.addEventListener('mouseenter', () => {
+        selected = entry.index
+        highlight()
+      })
+      node.addEventListener('click', () => executeEntry(entry))
+      return node
+    }
+
+    function highlight() {
+      for (const node of list.querySelectorAll('.item')) {
+        const active = Number(node.dataset.index) === selected
+        node.classList.toggle('selected', active)
+        node.setAttribute('aria-selected', active ? 'true' : 'false')
+      }
+      const activeNode = list.querySelector('.item.selected')
+      if (activeNode) query.setAttribute('aria-activedescendant', activeNode.id)
+      else query.removeAttribute('aria-activedescendant')
+      activeNode?.scrollIntoView({ block: 'nearest' })
+      if (items.length) live.textContent = formatResults(items.length)
+    }
+
+    // Render sections in order and index items in the same order the user sees
+    // them, so keyboard navigation always matches the visual list.
+    function renderSections(sections) {
+      items = []
+      for (const group of sections) {
+        for (const entry of group.entries) {
+          entry.index = items.length
+          items.push(entry)
+        }
+      }
+      if (selected >= items.length) selected = Math.max(0, items.length - 1)
+      list.replaceChildren()
+      if (!items.length) {
+        list.append(Object.assign(document.createElement('div'), {
+          className: 'empty',
+          role: 'status',
+          textContent: tr('palette.noMatches', 'No matches.'),
+        }))
+        live.textContent = tr('palette.noMatches', 'No matches.')
+        query.removeAttribute('aria-activedescendant')
+        return
+      }
+      for (const group of sections) {
+        section(group.titleKey ? tr(group.titleKey, group.title) : group.title, group.entries)
+      }
+      highlight()
+    }
+
+    function localEntry(raw, label, sub, command, options = {}) {
+      const haystack = [label, sub, options.extra].filter(Boolean).join(' ')
+      const rank = score(haystack, raw)
+      if (raw && rank <= 0) return null
+      return {
+        label,
+        sub,
+        score: options.score ?? null,
+        badge: options.badge ?? '',
+        command,
+        rank,
+      }
+    }
+
+    function localGroups(raw, { includeRuns = true, includeControls = true } = {}) {
+      const groups = { action: [], environment: [], run: [], page: [], control: [] }
+      const add = (group, label, sub, command, options) => {
+        const entry = localEntry(raw, label, sub, command, options)
+        if (entry) groups[group].push(entry)
+      }
+
+      for (const action of data.actions || []) {
+        add('action', action.label, '', { kind: 'action', id: action.id }, { badge: tr('palette.badge.action', 'Action'), extra: action.id })
+      }
+      for (const environment of data.environments || []) {
+        add('environment', environment.name, environment.id === data.activeEnvironmentId ? 'active' : '', { kind: 'environment', id: environment.id }, { badge: tr('palette.badge.environment', 'Env'), extra: environment.id })
+      }
+      if (includeRuns) {
+        for (const run of (data.runs || [])) {
+          add('run', run.project, `${rel(run.createdAt)} ago · ${run.id.slice(0, 8)}`, { kind: 'run', id: run.id }, { score: run.score, extra: `${run.id} ${run.branch}` })
+        }
+      }
+      for (const page of data.pages || []) {
+        add('page', page.label, '', { kind: 'page', route: page.route }, { badge: tr('palette.badge.page', 'Page'), extra: page.route })
+      }
+      if (includeControls) {
+        for (const control of (data.controls || [])) {
+          add('control', `${control.id} — ${control.description}`, `${control.pillar} · ${control.severity}`, { kind: 'control', id: control.id }, { extra: control.id })
+        }
+      }
+      return groups
+    }
+
+    function formatResults(count) {
+      if (count === 1) return tr('palette.resultOne', '1 result')
+      return tr('palette.results', '{count} results').replace('{count}', String(count))
+    }
+
+    function applyStaticI18n() {
+      query.placeholder = tr('palette.placeholder', query.placeholder)
+      query.setAttribute('aria-label', tr('palette.placeholder', 'Search'))
+      document.getElementById('footer-navigate').textContent = tr('palette.navigate', '↑↓ navigate')
+      document.getElementById('footer-open').textContent = tr('palette.open', '↵ open')
+      document.getElementById('footer-prefixes').title = tr('palette.prefixes', 'Filters: > commands, @ runs, # controls, : pages, ~ environments')
+      document.getElementById('footer-pin').textContent = tr('palette.pin', '⌘D pin')
+      list.setAttribute('aria-label', tr('palette.section.results', 'Results'))
+    }
+
+    const PREFIXES = {
+      '>': { kind: 'commands', types: '', sectionKey: 'palette.section.actions' },
+      '@': { kind: 'runs', types: 'runs', sectionKey: 'palette.section.runs' },
+      '#': { kind: 'controls', types: 'controls', sectionKey: 'palette.section.controls' },
+      ':': { kind: 'pages', types: '', sectionKey: 'palette.section.pages' },
+      '~': { kind: 'environments', types: '', sectionKey: 'palette.section.environments' },
+    }
+
+    function parseQuery(raw) {
+      const trimmed = String(raw ?? '').trim()
+      if (trimmed && PREFIXES[trimmed[0]]) {
+        return { prefix: trimmed[0], spec: PREFIXES[trimmed[0]], term: trimmed.slice(1).trim() }
+      }
+      return { prefix: '', spec: null, term: trimmed }
+    }
+
+    function recentEntries() {
+      const entries = []
+      for (const item of data.recents?.commands ?? []) {
+        if (!item?.command) continue
+        entries.push({
+          label: item.label || '…',
+          sub: item.sub || '',
+          badge: item.badge || tr('palette.badge.recent', 'Recent'),
+          command: item.command,
+          rank: 1,
+        })
+      }
+      for (const item of data.recents?.searches ?? []) {
+        if (!item?.value) continue
+        if (item.environmentId && data.activeEnvironmentId && item.environmentId !== data.activeEnvironmentId) continue
+        entries.push({
+          label: item.value,
+          sub: tr('palette.searchRecent', 'Recent search'),
+          badge: tr('palette.badge.search', 'Search'),
+          command: { kind: 'search', value: item.value },
+          rank: 0.5,
+        })
+      }
+      return entries
+    }
+
+    function favoriteEntries() {
+      return (data.favorites ?? []).map(item => ({
+        label: item.label || '…',
+        sub: item.sub || '',
+        badge: item.badge || tr('palette.badge.favorite', 'Pinned'),
+        command: item.command,
+        rank: 2,
+      })).filter(entry => entry.command)
+    }
+
+    function build() {
+      const parsed = parseQuery(query.value)
+      highlightTerm = parsed.term.toLowerCase()
+      if (parsed.prefix) {
+        const raw = parsed.term.toLowerCase()
+        const groups = localGroups(raw, {
+          includeRuns: parsed.prefix === '@',
+          includeControls: parsed.prefix === '#',
+        })
+        let entries = []
+        if (parsed.prefix === '>') entries = groups.action
+        else if (parsed.prefix === ':') entries = groups.page
+        else if (parsed.prefix === '~') entries = groups.environment
+        else if (parsed.prefix === '@') entries = groups.run.slice(0, 20)
+        else if (parsed.prefix === '#') entries = groups.control.slice(0, 50)
+
+        renderSections([{ title: 'Results', titleKey: parsed.spec.sectionKey, entries }])
+        hint.textContent = formatResults(entries.length)
+        return
+      }
+
+      const raw = parsed.term.toLowerCase()
+      const groups = localGroups(raw)
+
+      // Without a query the palette stays compact: recents + recent runs.
+      groups.run = groups.run.slice(0, raw ? 200 : 8)
+      if (!raw) groups.control = []
+
+      renderSections([
+        { title: 'Favorites', titleKey: 'palette.section.favorites', entries: raw ? [] : favoriteEntries() },
+        { title: 'Recent', titleKey: 'palette.section.recent', entries: raw ? [] : recentEntries() },
+        { title: 'Actions', titleKey: 'palette.section.actions', entries: groups.action },
+        { title: 'Environments', titleKey: 'palette.section.environments', entries: groups.environment },
+        { title: 'Runs', titleKey: 'palette.section.runs', entries: groups.run },
+        { title: 'Pages', titleKey: 'palette.section.pages', entries: groups.page },
+        { title: 'Controls', titleKey: 'palette.section.controls', entries: groups.control },
+      ])
+
+      if (searchState === 'local') hint.textContent = tr('palette.localSearch', 'local search · server index unavailable')
+      else hint.textContent = `${(data.runs || []).length} runs · ${(data.controls || []).length} controls`
+    }
+
+    function serverEntry(result, raw) {
+      const type = String(result?.type || '')
+      const title = String(result?.title || result?.id || '')
+      const subtitle = String(result?.subtitle || '')
+      let command = null
+
+      if (type === 'run') command = { kind: 'run', id: result.id }
+      else if (type === 'finding') command = { kind: 'finding', runId: result.run_id }
+      else if (type === 'control') command = { kind: 'control', id: result.id }
+      else if (result?.route) command = { kind: 'page', route: result.route }
+
+      if (!command || !title) return null
+      if (type === 'finding' && !command.runId) return null
+
+      const similarity = Number(result.rank)
+      const prefixBoost = title.toLowerCase().startsWith(raw) ? 60 : 0
+      return {
+        label: title,
+        sub: subtitle,
+        score: typeof result.score === 'number' ? result.score : null,
+        badge: tr(`palette.badge.${type}`, RESULT_BADGES[type] || 'Result'),
+        command,
+        rank: Math.max(1, (Number.isFinite(similarity) ? similarity : 0) * 900 + prefixBoost),
+      }
+    }
+
+    function renderServerResults(parsed, results) {
+      searchState = 'server'
+      const raw = parsed.term.toLowerCase()
+      highlightTerm = raw
+      const mapped = []
+      for (const result of results) {
+        const entry = serverEntry(result, raw)
+        if (entry) mapped.push(entry)
+      }
+      mapped.sort((a, b) => b.rank - a.rank)
+
+      if (parsed.prefix) {
+        let entries = mapped
+        if (!entries.length) {
+          const groups = localGroups(raw, {
+            includeRuns: parsed.prefix === '@',
+            includeControls: parsed.prefix === '#',
+          })
+          if (parsed.prefix === '@') entries = groups.run.slice(0, 20)
+          else if (parsed.prefix === '#') entries = groups.control.slice(0, 50)
+        }
+        renderSections([{ title: 'Results', titleKey: parsed.spec.sectionKey, entries }])
+        hint.textContent = formatResults(entries.length)
+        return
+      }
+
+      const groups = localGroups(raw, { includeRuns: false, includeControls: false })
+      renderSections([
+        { title: 'Actions', titleKey: 'palette.section.actions', entries: groups.action },
+        { title: 'Environments', titleKey: 'palette.section.environments', entries: groups.environment },
+        { title: 'Pages', titleKey: 'palette.section.pages', entries: groups.page },
+        { title: 'Results', titleKey: 'palette.section.results', entries: mapped },
+      ])
+      hint.textContent = formatResults(mapped.length)
+    }
+
+    function scheduleSearch() {
+      const parsed = parseQuery(query.value)
+      const seq = ++searchSeq
+      if (searchTimer) clearTimeout(searchTimer)
+
+      if (!parsed.prefix && !parsed.term) {
+        searchState = 'idle'
+        build()
+        return
+      }
+      if (parsed.prefix && (!parsed.spec.types || !parsed.term)) {
+        searchState = 'local'
+        build()
+        return
+      }
+      searchTimer = setTimeout(() => runSearch(parsed, seq), SEARCH_DEBOUNCE_MS)
+    }
+
+    async function runSearch(parsed, seq) {
+      if (seq !== searchSeq) return
+      searchState = 'pending'
+      hint.textContent = tr('palette.searching', 'searching…')
+      try {
+        const response = await api.search(parsed.term, parsed.spec?.types || '')
+        if (seq !== searchSeq) return
+        if (!response || response.supported === false) {
+          searchState = 'local'
+          build()
+          return
+        }
+        renderServerResults(parsed, response.items || [])
+      } catch {
+        if (seq !== searchSeq) return
+        searchState = 'local'
+        build()
+      }
+    }
+
+    function reset() {
+      query.value = ''
+      selected = 0
+      searchSeq += 1
+      if (searchTimer) clearTimeout(searchTimer)
+      searchState = 'idle'
+      build()
+    }
+
+    async function executeEntry(entry) {
+      if (!entry) return
+      const command = entry.command
+      if (command.kind === 'search') {
+        query.value = command.value
+        selected = 0
+        scheduleSearch()
+        query.focus()
+        return
+      }
+      try {
+        await api.record({
+          command,
+          label: entry.label,
+          sub: entry.sub,
+          badge: entry.badge,
+          query: query.value.trim(),
+        })
+      } catch {
+        /* recents are best-effort */
+      }
+      await api.execute(command)
+    }
+
+    query.addEventListener('input', () => {
+      selected = 0
+      scheduleSearch()
+    })
+    document.addEventListener('keydown', (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'd') {
+        const item = items[selected]
+        if (!item || item.command.kind === 'search') return
+        event.preventDefault()
+        api.toggleFavorite({
+          command: item.command,
+          label: item.label,
+          sub: item.sub,
+          badge: item.badge,
+        }).then((favorites) => {
+          data.favorites = Array.isArray(favorites) ? favorites : []
+          build()
+        }).catch(() => {})
+        return
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        // Clear first, close on a second Escape.
+        if (query.value) reset()
+        else api.close()
+        return
+      }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault()
+        if (!items.length) return
+        selected = (selected + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+        highlight()
+        return
+      }
+      if (event.key === 'Tab') {
+        event.preventDefault()
+        query.focus()
+        return
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        const item = items[selected]
+        if (item) executeEntry(item)
+      }
+    })
+
+    function loadI18n(payload) {
+      if (!payload || !payload.messages) return
+      i18n = payload.messages
+      if (payload.locale) document.documentElement.lang = payload.locale
+      applyStaticI18n()
+      if (query.value.trim()) scheduleSearch()
+      else build()
+    }
+
+    api.i18n().then(loadI18n).catch(() => {})
+    api.onI18n(loadI18n)
+
+    api.onOpen(() => {
+      query.value = ''
+      selected = 0
+      searchSeq += 1
+      if (searchTimer) clearTimeout(searchTimer)
+      searchState = 'idle'
+      build()
+      query.focus()
+    })
+
+    api.onData((next) => {
+      data = next
+      selected = 0
+      if (query.value.trim()) scheduleSearch()
+      else build()
+      query.focus()
+    })
+    api.get().then((next) => {
+      data = next
+      if (query.value.trim()) scheduleSearch()
+      else {
+        build()
+        hint.textContent = `${(data.runs || []).length} runs · ${(data.controls || []).length} controls`
+      }
+    })
+  </script>
+</body>
+</html>

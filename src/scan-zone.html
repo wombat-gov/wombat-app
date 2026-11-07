@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scan an IaC folder</title>
+  <style>
+    :root {
+      --bg: #0b0f14; --surface: #141a22; --surface-2: #1a222c; --border: #26313d;
+      --text: #e6edf5; --muted: #93a3b5; --accent: #4f8cff;
+      --ok: #3fb950; --warn: #d29922; --err: #f85149;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; padding: 16px; background: var(--bg); color: var(--text);
+      font: 12px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: flex; flex-direction: column; gap: 10px; user-select: none;
+    }
+    h1 { margin: 0; font-size: 15px; font-weight: 700; }
+    .drop {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 8px; text-align: center; border: 2px dashed var(--border); border-radius: 14px;
+      background: var(--surface); padding: 18px; transition: border-color .15s, background .15s;
+    }
+    .drop.over { border-color: var(--accent); background: rgba(79,140,255,.06); }
+    .drop .icon { font-size: 26px; color: var(--muted); }
+    .drop .hint { color: var(--muted); font-size: 11px; max-width: 320px; }
+    .row { display: flex; gap: 8px; }
+    button {
+      padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--surface-2); color: var(--text); font: inherit; font-weight: 600; cursor: pointer;
+    }
+    button:hover { border-color: #3a4756; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.ghost { background: transparent; color: var(--muted); margin-left: auto; }
+    .status { min-height: 34px; padding: 8px 10px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); color: var(--muted); font-size: 11px; }
+    .status.error { color: var(--err); border-color: rgba(248,81,73,.35); }
+    .status.done { color: var(--ok); border-color: rgba(63,185,80,.35); }
+    .status strong { color: var(--text); }
+    .spinner { width: 18px; height: 18px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .watch { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
+    .watch input { accent-color: var(--accent); }
+    .run-link { color: var(--accent); font-weight: 600; background: none; border: 0; padding: 0; cursor: pointer; font: inherit; }
+    .progress { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+    .progress > div { height: 100%; width: 0; background: var(--accent); border-radius: 3px; transition: width .3s ease; }
+  </style>
+</head>
+<body>
+  <h1>Scan an IaC folder</h1>
+  <div class="drop" id="drop">
+    <div class="icon">⌂</div>
+    <div>Drop a Terraform / CloudFormation folder here</div>
+    <div class="hint">The app copies only IaC files into the wombat-server container, scans them and cleans up. No bind mounts needed.</div>
+  </div>
+  <div class="row">
+    <button id="choose">Choose Folder…</button>
+    <button id="watch" class="primary">Watch Folder…</button>
+    <button id="stop" hidden>Stop Watching</button>
+    <button id="cancel-job" hidden>Cancel Scan</button>
+    <button id="close" class="ghost">Close</button>
+  </div>
+  <div class="progress" id="progress" hidden><div id="progress-fill"></div></div>
+  <div class="status" id="status">Idle. Drop a folder or choose one.</div>
+
+  <script>
+    const api = window.scanZone
+    const drop = document.getElementById('drop')
+    const status = document.getElementById('status')
+    const stopBtn = document.getElementById('stop')
+    const cancelBtn = document.getElementById('cancel-job')
+    const progress = document.getElementById('progress')
+    const progressFill = document.getElementById('progress-fill')
+    let watching = null
+    let lastRun = null
+    let currentJobId = null
+
+    function setStatus(text, kind = '') {
+      status.className = `status ${kind}`.trim()
+      status.replaceChildren()
+      if (text instanceof Node) status.append(text)
+      else status.textContent = text
+    }
+
+    function renderStatus(state) {
+      if (!state) return
+      if (state.status !== 'scanning') {
+        progress.hidden = true
+        progressFill.style.width = '0%'
+        cancelBtn.hidden = true
+        currentJobId = null
+      }
+      if (state.status === 'idle') {
+        setStatus('Idle. Drop a folder or choose one.')
+        return
+      }
+      if (state.status === 'scanning') {
+        const percent = Number.isFinite(state.progress) ? Math.max(0, Math.min(100, state.progress)) : 0
+        progress.hidden = false
+        progressFill.style.width = `${percent}%`
+        currentJobId = state.jobId || null
+        cancelBtn.hidden = !currentJobId
+        setStatus('')
+        const wrap = document.createElement('span')
+        wrap.style.display = 'inline-flex'
+        wrap.style.alignItems = 'center'
+        wrap.style.gap = '8px'
+        const spin = document.createElement('span')
+        spin.className = 'spinner'
+        wrap.append(spin, document.createTextNode(`Scanning ${state.project} (${state.files} files, ${state.iac})… ${percent}%`))
+        status.append(wrap)
+        return
+      }
+      if (state.status === 'auth') {
+        setStatus('Sign in to the dashboard first, then scan again.', 'error')
+        return
+      }
+      if (state.status === 'error') {
+        setStatus(state.message || 'Scan failed.', 'error')
+        return
+      }
+      if (state.status === 'busy') {
+        setStatus(state.message || 'A scan is already running.')
+        return
+      }
+      if (state.status === 'done' && state.run) {
+        lastRun = state.run
+        setStatus('')
+        const text = document.createElement('span')
+        text.append(document.createTextNode(`${state.run.project} — score ${state.run.score ?? '—'}/100 · `))
+        const link = document.createElement('button')
+        link.className = 'run-link'
+        link.textContent = 'Open run →'
+        link.addEventListener('click', () => api.openRun(state.run.id))
+        text.append(link)
+        status.className = 'status done'
+        status.append(text)
+      }
+    }
+
+    drop.addEventListener('dragover', (event) => {
+      event.preventDefault()
+      drop.classList.add('over')
+    })
+    drop.addEventListener('dragleave', () => drop.classList.remove('over'))
+    drop.addEventListener('drop', (event) => {
+      event.preventDefault()
+      drop.classList.remove('over')
+      const file = event.dataTransfer?.files?.[0]
+      if (!file) return
+      const path = api.getPathForFile(file)
+      if (path) api.drop(path)
+      else setStatus('Could not read the dropped folder path.', 'error')
+    })
+
+    document.getElementById('choose').addEventListener('click', () => api.choose())
+    document.getElementById('watch').addEventListener('click', () => api.chooseWatch())
+    stopBtn.addEventListener('click', async () => {
+      await api.stopWatch()
+    })
+    cancelBtn.addEventListener('click', async () => {
+      if (!currentJobId) return
+      cancelBtn.disabled = true
+      const result = await api.cancelJob(currentJobId)
+      if (!result.ok) setStatus(result.message || 'Could not cancel the scan.', 'error')
+      else setStatus('Cancelling…')
+      setTimeout(() => { cancelBtn.disabled = false }, 800)
+    })
+    document.getElementById('close').addEventListener('click', () => api.close())
+
+    api.onStatus(renderStatus)
+    api.onWatch((data) => {
+      watching = data?.dir || null
+      stopBtn.hidden = !watching
+      if (watching) setStatus(`Watching ${watching} — scans run after changes.`)
+    })
+    api.getStatus().then((state) => {
+      renderStatus(state.status)
+      if (state.watching) {
+        watching = state.watching
+        stopBtn.hidden = false
+      }
+    })
+  </script>
+</body>
+</html>

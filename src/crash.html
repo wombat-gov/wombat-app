@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WOMBATpass stopped</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f5f7fa; --surface: #ffffff; --surface-2: #eef2f7; --border: #d5dde6;
+      --text: #17202b; --muted: #5b6b7c; --accent: #2563eb; --err: #cf222e;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b0f14; --surface: #141a22; --surface-2: #1b232d; --border: #2a3442;
+        --text: #e6edf5; --muted: #93a3b5; --accent: #4f8cff; --err: #f85149;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; display: flex; align-items: center; justify-content: center;
+      padding: 24px; background: var(--bg); color: var(--text);
+      font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased; user-select: none;
+    }
+    .card {
+      width: 100%; max-width: 560px; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 16px; padding: 30px;
+      box-shadow: 0 24px 70px rgba(0,0,0,.28);
+    }
+    .brand { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; margin-bottom: 10px; }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    p { margin: 0 0 12px; color: var(--muted); }
+    .detail { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin: 16px 0; font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; color: var(--text); }
+    .error { color: var(--err); font-weight: 600; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+    button {
+      padding: 9px 13px; border-radius: 8px; border: 1px solid var(--border);
+      background: var(--surface-2); color: var(--text); font: inherit; font-weight: 600; cursor: pointer;
+    }
+    button:hover { border-color: var(--accent); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.danger { color: var(--err); }
+    .status { min-height: 18px; margin-top: 12px; color: var(--muted); font-size: 11px; }
+  </style>
+</head>
+<body>
+  <main class="card" role="alertdialog" aria-labelledby="title" aria-describedby="summary">
+    <div class="brand">WOMBATpass</div>
+    <h1 id="title" data-i18n="crash.title">The dashboard stopped unexpectedly</h1>
+    <p id="summary" data-i18n="crash.summary">The renderer stopped unexpectedly. You can retry, inspect the logs, or copy a redacted diagnostics bundle.</p>
+    <div class="detail" id="detail">Loading crash details…</div>
+    <div class="actions">
+      <button id="reload" class="primary" autofocus data-i18n="crash.reload">Reload</button>
+      <button id="safe" data-i18n="crash.safe">Reload in safe mode</button>
+      <button id="logs" data-i18n="crash.openLogs">Open logs</button>
+      <button id="copy" data-i18n="crash.copy">Copy diagnostics</button>
+      <button id="save" data-i18n="crash.save">Save diagnostics…</button>
+      <button id="quit" class="danger" data-i18n="crash.quit">Quit</button>
+    </div>
+    <div class="status" id="status" role="status" aria-live="polite"></div>
+  </main>
+  <script>
+    const api = window.wombatApp
+    const status = document.getElementById('status')
+    const detail = document.getElementById('detail')
+    let messages = {}
+    const tr = (key, fallback) => messages[key] ?? fallback
+
+    function setStatus(text) { status.textContent = text || '' }
+
+    api.getI18n().then((payload) => {
+      if (!payload?.messages) return
+      messages = payload.messages
+      if (payload.locale) document.documentElement.lang = payload.locale
+      for (const node of document.querySelectorAll('[data-i18n]')) {
+        node.textContent = tr(node.dataset.i18n, node.textContent)
+      }
+    }).catch(() => {})
+
+    api.crashGet().then((info) => {
+      if (!info?.crash) {
+        detail.textContent = 'No crash metadata available.'
+        return
+      }
+      detail.textContent = [
+        `${tr('crash.version', 'Version')}: ${info.appVersion || '—'}`,
+        `${tr('crash.reason', 'Reason')}: ${info.crash.reason || tr('crash.unknown', 'unknown')}`,
+        info.crash.exitCode != null ? `${tr('crash.exitCode', 'Exit code')}: ${info.crash.exitCode}` : '',
+        info.crash.at ? `${tr('crash.at', 'At')}: ${info.crash.at}` : '',
+        `${tr('crash.log', 'Log')}: ${info.logPath || '—'}`,
+      ].filter(Boolean).join('\n')
+    }).catch(() => { detail.textContent = 'Crash metadata unavailable.' })
+
+    document.getElementById('reload').addEventListener('click', () => api.crashReload(false))
+    document.getElementById('safe').addEventListener('click', () => api.crashReload(true))
+    document.getElementById('logs').addEventListener('click', () => api.crashOpenLogs())
+    document.getElementById('copy').addEventListener('click', async () => {
+      const result = await api.crashCopyDiagnostics()
+      setStatus(result?.ok ? tr('crash.copied', 'Diagnostics copied to the clipboard.') : tr('crash.copyFailed', 'Copy failed.'))
+    })
+    document.getElementById('save').addEventListener('click', async () => {
+      const result = await api.crashSaveDiagnostics()
+      setStatus(result?.ok ? `${tr('crash.savedTo', 'Saved to')} ${result.filePath}` : (result?.canceled ? '' : tr('crash.saveFailed', 'Save failed.')))
+    })
+    document.getElementById('quit').addEventListener('click', () => api.crashQuit())
+  </script>
+</body>
+</html>
